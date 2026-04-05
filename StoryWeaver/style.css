@@ -1,22 +1,273 @@
-.storyweaver-drawer {
-    margin-top: 8px;
+/* ============================================
+   StoryWeaver - 深色主题样式
+   参考 st-beat-tracker-main 设计风格
+   ============================================ */
+
+/* --- [SECTION 1] CSS 变量定义 --- */
+:root {
+  --sw-bg-darker: #121212;
+  --sw-bg-dark: #1e1e1e;
+  --sw-bg-medium: #2c2c2e;
+  --sw-border-color: #38383a;
+  --sw-text-light: rgba(255, 255, 255, 0.9);
+  --sw-text-medium: rgba(255, 255, 255, 0.65);
+  --sw-text-dim: rgba(255, 255, 255, 0.45);
+  --sw-primary-accent: #0a84ff;
+  --sw-primary-accent-hover: #3399ff;
+  --sw-success-color: #30d158;
+  --sw-warning-color: #ff9f0a;
+  --sw-danger-color: #ff453a;
+  
+  --sw-space-4: 4px;
+  --sw-space-8: 8px;
+  --sw-space-12: 12px;
+  --sw-space-16: 16px;
+  --sw-space-20: 20px;
+  --sw-space-24: 24px;
 }
 
-.storyweaver-summary {
-    margin-bottom: 10px;
-    color: var(--SmartThemeBodyColor, #ddd);
-    font-size: 0.92rem;
+/* --- [SECTION 2] 抽屉组件基础布局 --- */
+#storyweaver-wrapper {
+  margin-top: 8px;
 }
 
-.storyweaver-summary p {
-    margin: 0;
+#storyweaver-wrapper .drawer-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
-.storyweaver-actions {
-    display: flex;
-    gap: 8px;
+#storyweaver-wrapper #storyweaver-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
 }
 
-.storyweaver-primary-btn {
-    min-width: 190px;
+#storyweaver-wrapper #storyweaver-icon.openIcon {
+  color: var(--sw-primary-accent);
+}
+
+#storyweaver-wrapper #storyweaver-icon.closedIcon {
+  color: var(--sw-text-medium);
+}
+
+#storyweaver-wrapper #storyweaver-icon:hover {
+  color: var(--sw-primary-accent-hover);
+}
+
+/* --- [SECTION 3] 内容面板样式 --- */
+#storyweaver-wrapper #storyweaver-content-panel {
+  display: none;
+  position: absolute;
+  top: var(--topBarBlockSize, 38px);
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  max-height: calc(100vh - calc(var(--topBarBlockSize, 38px) + var(--bottomFormBlockSize, 0px)));
+  max-height: calc(100dvh - calc(var(--topBarBlockSize, 38px) + var(--bottomFormBlockSize, 0px)));
+  background: linear-gradient(180deg, var(--sw-bg-dark) 0%, var(--sw-bg-darker) 100%);
+  border: 1px solid var(--sw-border-color);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  z-index: 1049;
+  color: var(--sw-text-light);
+  overflow: hidden;
+}
+
+#storyweaver-wrapper #storyweaver-content-panel.openDrawer {
+  display: block;
+}
+
+/* --- [SECTION 4] 面板头部 --- */
+#storyweaver-wrapper .drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--sw-space-12) var(--sw-space-16);
+  background-color: var(--sw-bg-dark);
+  border-bottom: 1px solid var(--sw-border-color);
+}
+
+#storyweaver-wrapper .drawer-header h3 {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--sw-space-8);
+}
+
+#storyweaver-wrapper .drawer-header h3 i {
+  color: var(--sw-primary-accent);
+}
+
+#storyweaver-wrapper .sw-version {
+  font-size: 0.8em;
+  color: var(--sw-text-dim);
+  padding: 2px 8px;
+  background-color: var(--sw-bg-medium);
+  border-radius: 10px;
+}
+
+/* --- [SECTION 5] 主内容区 --- */
+.sw-panels-wrapper {
+  padding: var(--sw-space-16);
+  overflow-y: auto;
+  max-height: calc(80vh - 60px);
+}
+
+/* --- [SECTION 6] 卡片样式 --- */
+.sw-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border: 1px solid var(--sw-border-color);
+  border-radius: 10px;
+  padding: var(--sw-space-16);
+  margin-bottom: var(--sw-space-16);
+}
+
+.sw-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sw-space-8);
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--sw-text-light);
+  margin-bottom: var(--sw-space-12);
+}
+
+.sw-card-header i {
+  color: var(--sw-primary-accent);
+}
+
+.sw-description {
+  margin: 0;
+  font-size: 0.9em;
+  line-height: 1.6;
+  color: var(--sw-text-medium);
+}
+
+/* --- [SECTION 7] 操作按钮区 --- */
+.sw-actions-card {
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.08) 0%, rgba(10, 132, 255, 0.02) 100%);
+  border: 1px solid rgba(10, 132, 255, 0.25);
+  border-radius: 10px;
+  padding: var(--sw-space-20);
+  margin-bottom: var(--sw-space-16);
+  text-align: center;
+}
+
+.sw-primary-btn {
+  width: 100%;
+  padding: 12px 24px;
+  font-size: 1em;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--sw-primary-accent) 0%, #0077ed 100%);
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sw-space-8);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(10, 132, 255, 0.3);
+}
+
+.sw-primary-btn:hover {
+  background: linear-gradient(135deg, var(--sw-primary-accent-hover) 0%, #1a85ff 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(10, 132, 255, 0.4);
+}
+
+.sw-primary-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.3);
+}
+
+.sw-primary-btn i {
+  font-size: 1.1em;
+}
+
+/* --- [SECTION 8] 功能特性列表 --- */
+.sw-features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sw-space-12);
+}
+
+.sw-feature-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sw-space-8);
+  padding: var(--sw-space-12);
+  background-color: var(--sw-bg-medium);
+  border: 1px solid var(--sw-border-color);
+  border-radius: 8px;
+  font-size: 0.85em;
+  color: var(--sw-text-medium);
+  transition: all 0.2s ease;
+}
+
+.sw-feature-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(10, 132, 255, 0.4);
+}
+
+.sw-feature-item i {
+  color: var(--sw-primary-accent);
+  font-size: 1em;
+}
+
+/* --- [SECTION 9] 内容面板尺寸控制 --- */
+#storyweaver-wrapper.drawer .drawer-content {
+  width: min(480px, 92vw);
+}
+
+/* --- [SECTION 10] 滚动条样式 --- */
+.sw-panels-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sw-panels-wrapper::-webkit-scrollbar-track {
+  background: var(--sw-bg-darker);
+}
+
+.sw-panels-wrapper::-webkit-scrollbar-thumb {
+  background-color: var(--sw-bg-medium);
+  border-radius: 3px;
+}
+
+.sw-panels-wrapper::-webkit-scrollbar-thumb:hover {
+  background-color: #555c6e;
+}
+
+/* --- [SECTION 11] 响应式适配 --- */
+@media (max-width: 680px) {
+  #storyweaver-wrapper.drawer .drawer-content {
+    width: 96vw;
+    left: 2vw;
+    right: 2vw;
+  }
+  
+  .sw-features {
+    grid-template-columns: 1fr;
+  }
+  
+  .sw-panels-wrapper {
+    padding: var(--sw-space-12);
+  }
+}
+
+@media (max-width: 400px) {
+  #storyweaver-wrapper .drawer-header h3 {
+    font-size: 1em;
+  }
+  
+  .sw-primary-btn {
+    font-size: 0.9em;
+    padding: 10px 16px;
+  }
 }

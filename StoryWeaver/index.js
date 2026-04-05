@@ -1,13 +1,11 @@
 import { saveSettingsDebounced } from '../../../../script.js';
-import { extension_settings } from '../../../extensions.js';
+import { extension_settings, renderExtensionTemplateAsync } from '../../../extensions.js';
 import { initTxtToWorldbookBridge, getTxtToWorldbookApi } from './txtToWorldbook/main.js';
 
 const extensionName = 'storyweaver';
-const panelId = 'storyweaver-panel';
-const contentId = 'storyweaver-content';
 
 const defaultSettings = {
-    panelCollapsed: false,
+    panelCollapsed: true,
 };
 
 let settings = {};
@@ -28,13 +26,28 @@ function persistSettings() {
     saveSettingsDebounced();
 }
 
-function updateCollapseUI() {
-    const contentEl = document.getElementById(contentId);
-    const iconEl = document.getElementById('storyweaver-collapse-icon');
-    if (!contentEl || !iconEl) return;
+function updateDrawerUI() {
+    const iconEl = document.getElementById('storyweaver-icon');
+    const panelEl = document.getElementById('storyweaver-content-panel');
+    if (!iconEl || !panelEl) return;
 
-    contentEl.style.display = settings.panelCollapsed ? 'none' : 'block';
-    iconEl.textContent = settings.panelCollapsed ? '▶' : '▼';
+    if (settings.panelCollapsed) {
+        iconEl.classList.remove('openIcon');
+        iconEl.classList.add('closedIcon');
+        panelEl.classList.remove('openDrawer');
+        panelEl.classList.add('closedDrawer');
+    } else {
+        iconEl.classList.remove('closedIcon');
+        iconEl.classList.add('openIcon');
+        panelEl.classList.remove('closedDrawer');
+        panelEl.classList.add('openDrawer');
+    }
+}
+
+function toggleDrawer() {
+    settings.panelCollapsed = !settings.panelCollapsed;
+    persistSettings();
+    updateDrawerUI();
 }
 
 function openTxtToWorldbookPanel() {
@@ -46,40 +59,49 @@ function openTxtToWorldbookPanel() {
     api.open();
 }
 
-function mountUI() {
-    if (document.getElementById(panelId)) return;
+async function setupUI() {
+    // 加载抽屉组件模板
+    const html = await renderExtensionTemplateAsync('third-party/StoryWeaver', 'drawer-component');
+    
+    // 挂载到顶部功能栏（在 extensions-settings-button 后面）
+    const topbarAnchor = $('#extensions-settings-button');
+    if (topbarAnchor.length > 0) {
+        topbarAnchor.after(html);
+    } else {
+        // 回退到插件设置面板
+        $('#extensions_settings2').append(html);
+    }
 
-    const html = `
-<div id="${panelId}" class="inline-drawer storyweaver-drawer">
-    <div class="inline-drawer-toggle inline-drawer-header">
-        <b>StoryWeaver</b>
-        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down" id="storyweaver-collapse-icon">▼</div>
-    </div>
-    <div id="${contentId}" class="inline-drawer-content">
-        <div class="storyweaver-summary">
-            <p>Import TXT and export worldbook/character card.</p>
-        </div>
-        <div class="storyweaver-actions">
-            <button id="storyweaver-open-ttw" class="menu_button storyweaver-primary-btn">Open TXT Converter</button>
-        </div>
-    </div>
-</div>`;
-
-    $('#extensions_settings2').append(html);
-
-    $(document).on('click', '#storyweaver-open-ttw', openTxtToWorldbookPanel);
-    $(document).on('click', `#${panelId} .inline-drawer-toggle`, () => {
-        settings.panelCollapsed = !settings.panelCollapsed;
-        persistSettings();
-        updateCollapseUI();
+    // 绑定抽屉开关事件
+    $(document).on('click', '#storyweaver-wrapper .drawer-toggle', (e) => {
+        e.stopPropagation();
+        toggleDrawer();
     });
 
-    updateCollapseUI();
+    // 绑定打开转换器按钮
+    $(document).on('click', '#storyweaver-open-converter', () => {
+        openTxtToWorldbookPanel();
+    });
+
+    // 点击面板外部关闭抽屉
+    $(document).on('click', (e) => {
+        if (!settings.panelCollapsed) {
+            const wrapper = document.getElementById('storyweaver-wrapper');
+            if (wrapper && !wrapper.contains(e.target)) {
+                settings.panelCollapsed = true;
+                persistSettings();
+                updateDrawerUI();
+            }
+        }
+    });
+
+    // 初始化 UI 状态
+    updateDrawerUI();
 }
 
 async function bootstrap() {
     ensureSettings();
-    mountUI();
+    await setupUI();
 
     try {
         await initTxtToWorldbookBridge();
@@ -87,6 +109,7 @@ async function bootstrap() {
             openTxtConverter: openTxtToWorldbookPanel,
             getTxtToWorldbookApi,
         };
+        console.log('[StoryWeaver] Plugin initialized successfully');
     } catch (error) {
         console.error('[StoryWeaver] txtToWorldbook init failed:', error);
         toastr.error('StoryWeaver failed to initialize TXT converter.');
