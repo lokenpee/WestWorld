@@ -1,14 +1,83 @@
 import { saveSettingsDebounced } from '../../../../script.js';
 import { extension_settings, renderExtensionTemplateAsync } from '../../../extensions.js';
-import { initTxtToWorldbookBridge, getTxtToWorldbookApi } from './txtToWorldbook/main.js';
 
 const extensionName = 'storyweaver';
+const setupEventNamespace = '.storyweaver';
 
 const defaultSettings = {
     panelCollapsed: true,
 };
 
 let settings = {};
+let txtToWorldbookModule = null;
+let txtToWorldbookInitPromise = null;
+
+function getExtensionFolderName() {
+    const match = /\/scripts\/extensions\/third-party\/([^/]+)\//.exec(import.meta.url);
+    return match?.[1] ? decodeURIComponent(match[1]) : 'StoryWeaver';
+}
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function mountDrawerHtml(html) {
+    const existingWrapper = document.getElementById('storyweaver-wrapper');
+
+    const topbarAnchor = $('#extensions-settings-button');
+    if (topbarAnchor.length > 0) {
+        if (existingWrapper) {
+            topbarAnchor.after(existingWrapper);
+        } else {
+            topbarAnchor.after(html);
+        }
+        return true;
+    }
+
+    const settingsPanel = $('#extensions_settings2');
+    if (settingsPanel.length > 0) {
+        if (existingWrapper) {
+            settingsPanel.append(existingWrapper);
+        } else {
+            settingsPanel.append(html);
+        }
+        return true;
+    }
+
+    return false;
+}
+
+async function mountDrawerWithRetry(html, maxAttempts = 30, intervalMs = 200) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (mountDrawerHtml(html)) {
+            return true;
+        }
+        await delay(intervalMs);
+    }
+    return false;
+}
+
+async function loadTxtToWorldbookModule() {
+    if (!txtToWorldbookModule) {
+        txtToWorldbookModule = await import('./txtToWorldbook/main.js');
+    }
+    return txtToWorldbookModule;
+}
+
+async function ensureTxtToWorldbookReady() {
+    if (!txtToWorldbookInitPromise) {
+        txtToWorldbookInitPromise = (async () => {
+            const moduleRef = await loadTxtToWorldbookModule();
+            await moduleRef.initTxtToWorldbookBridge();
+            return moduleRef;
+        })();
+    }
+    return txtToWorldbookInitPromise;
+}
+
+function getTxtToWorldbookApiSafe() {
+    return txtToWorldbookModule?.getTxtToWorldbookApi?.();
+}
 
 function ensureSettings() {
     if (!extension_settings[extensionName]) {
@@ -50,41 +119,62 @@ function toggleDrawer() {
     updateDrawerUI();
 }
 
-function openTxtToWorldbookPanel() {
-    const api = getTxtToWorldbookApi();
-    if (!api || typeof api.open !== 'function') {
-        toastr.error('StoryWeaver converter is not ready yet.');
-        return;
+async function openTxtToWorldbookPanel() {
+    try {
+        await ensureTxtToWorldbookReady();
+        const api = getTxtToWorldbookApiSafe();
+        if (!api || typeof api.open !== 'function') {
+            toastr.error('StoryWeaver converter is not ready yet.');
+            return;
+        }
+        api.open();
+    } catch (error) {
+        console.error('[StoryWeaver] failed to open TXT converter:', error);
+        toastr.error('StoryWeaver converter failed to load.');
     }
-    api.open();
 }
 
 async function setupUI() {
-    // 加载抽屉组件模板
-    const html = await renderExtensionTemplateAsync('third-party/StoryWeaver', 'drawer-component');
-    
-    // 挂载到顶部功能栏（在 extensions-settings-button 后面）
-    const topbarAnchor = $('#extensions-settings-button');
-    if (topbarAnchor.length > 0) {
-        topbarAnchor.after(html);
-    } else {
-        // 回退到插件设置面板
-        $('#extensions_settings2').append(html);
+    const extensionFolder = getExtensionFolderName();
+
+    // Load template using detected folder first, then fallback to the canonical name.
+    let html = '';
+    try {
+        html = await renderExtensionTemplateAsync(`third-party/${extensionFolder}`, 'drawer-component');
+    } catch (error) {
+        if (extensionFolder !== 'StoryWeaver') {
+            html = await renderExtensionTemplateAsync('third-party/StoryWeaver', 'drawer-component');
+        } else {
+            throw error;
+        }
     }
 
-    // 绑定抽屉开关事件
-    $(document).on('click', '#storyweaver-wrapper .drawer-toggle', (e) => {
+    if (!html || !String(html).trim()) {
+        throw new Error('StoryWeaver drawer template is empty.');
+    }
+
+    const mounted = await mountDrawerWithRetry(html, 60, 250);
+    if (!mounted) {
+        // Fallback mount so the icon can still appear even if target selectors change.
+        const existingWrapper = document.getElementById('storyweaver-wrapper');
+        if (!existingWrapper) {
+            document.body.insertAdjacentHTML('beforeend', html);
+        }
+        console.warn('[StoryWeaver] mount target not found, mounted to body fallback.');
+    }
+
+    // Rebind with namespace to avoid duplicated handlers on reload.
+    $(document).off(`click${setupEventNamespace}`);
+    $(document).on(`click${setupEventNamespace}`, '#storyweaver-wrapper .drawer-toggle', (e) => {
         e.stopPropagation();
         toggleDrawer();
     });
 
-    // 绑定打开转换器按钮
-    $(document).on('click', '#storyweaver-open-converter', () => {
-        openTxtToWorldbookPanel();
+    $(document).on(`click${setupEventNamespace}`, '#storyweaver-open-converter', async () => {
+        await openTxtToWorldbookPanel();
     });
 
-    // 点击面板外部关闭抽屉
-    $(document).on('click', (e) => {
+    $(document).on(`click${setupEventNamespace}`, (e) => {
         if (!settings.panelCollapsed) {
             const wrapper = document.getElementById('storyweaver-wrapper');
             if (wrapper && !wrapper.contains(e.target)) {
@@ -101,13 +191,18 @@ async function setupUI() {
 
 async function bootstrap() {
     ensureSettings();
-    await setupUI();
+    try {
+        await setupUI();
+    } catch (error) {
+        console.error('[StoryWeaver] UI mount failed:', error);
+        toastr.error('StoryWeaver UI mount failed. Please reload extensions.');
+    }
 
     try {
-        await initTxtToWorldbookBridge();
+        await ensureTxtToWorldbookReady();
         window.StoryWeaver = {
             openTxtConverter: openTxtToWorldbookPanel,
-            getTxtToWorldbookApi,
+            getTxtToWorldbookApi: getTxtToWorldbookApiSafe,
         };
         console.log('[StoryWeaver] Plugin initialized successfully');
     } catch (error) {

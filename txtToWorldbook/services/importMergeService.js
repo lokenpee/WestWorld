@@ -1,3 +1,5 @@
+import { normalizeNameForComparison } from './nameNormalizationService.js';
+
 export function createImportMergeService(deps = {}) {
     const {
         AppState,
@@ -21,18 +23,37 @@ export function createImportMergeService(deps = {}) {
 
     function findDuplicateEntries(existing, imported) {
         const duplicates = [];
+
+        const existingCanonicalMapByCategory = {};
+        for (const category in existing) {
+            const map = new Map();
+            for (const name of Object.keys(existing[category] || {})) {
+                const canonical = normalizeNameForComparison(name);
+                if (!canonical || map.has(canonical)) continue;
+                map.set(canonical, name);
+            }
+            existingCanonicalMapByCategory[category] = map;
+        }
+
         for (const category in imported) {
             if (!existing[category]) continue;
             for (const name in imported[category]) {
-                if (existing[category][name]) {
-                    const existingStr = JSON.stringify(existing[category][name]);
+                const exactMatchName = existing[category][name] ? name : null;
+                const canonical = normalizeNameForComparison(name);
+                const canonicalMatchName = canonical ? existingCanonicalMapByCategory[category]?.get(canonical) : null;
+                const resolvedExistingName = exactMatchName || canonicalMatchName;
+
+                if (resolvedExistingName && existing[category][resolvedExistingName]) {
+                    const existingStr = JSON.stringify(existing[category][resolvedExistingName]);
                     const importedStr = JSON.stringify(imported[category][name]);
                     if (existingStr !== importedStr) {
                         duplicates.push({
                             category,
-                            name,
-                            existing: existing[category][name],
+                            name: resolvedExistingName,
+                            importedName: name,
+                            existing: existing[category][resolvedExistingName],
                             imported: imported[category][name],
+                            canonicalMatch: !exactMatchName && !!canonicalMatchName,
                         });
                     }
                 }

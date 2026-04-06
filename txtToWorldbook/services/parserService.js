@@ -89,12 +89,46 @@ export function createParserService(deps = {}) {
                     }
                 }
                 if (content || keywords.length > 0) {
-                    result[category][entryName] = { '关键词': keywords, '内容': content };
+                    const roleTypeMatch = entryContent.match(/"角色类型"\s*:\s*"([^"]+)"/);
+                    const parsedEntry = { '关键词': keywords, '内容': content };
+                    if (roleTypeMatch) {
+                        parsedEntry['角色类型'] = roleTypeMatch[1];
+                    }
+                    result[category][entryName] = parsedEntry;
                 }
             }
             if (Object.keys(result[category]).length === 0) delete result[category];
         }
         return result;
+    }
+
+    function normalizeRoleType(value) {
+        const role = String(value || '').trim();
+        if (!role) return '';
+        if (role.includes('主角')) return '主角';
+        if (role.includes('重要配角')) return '重要配角';
+        if (role.includes('普通配角') || role.includes('配角')) return '普通配角';
+        if (role.toUpperCase() === 'NPC' || role.includes('NPC') || role.includes('路人') || role.includes('龙套')) return 'NPC';
+        return '';
+    }
+
+    function normalizeParsedWorldbookData(data) {
+        if (!data || typeof data !== 'object') return data;
+        for (const category in data) {
+            const categoryData = data[category];
+            if (!categoryData || typeof categoryData !== 'object') continue;
+
+            for (const entryName in categoryData) {
+                const entry = categoryData[entryName];
+                if (!entry || typeof entry !== 'object') continue;
+
+                if (category === '角色') {
+                    const normalizedRoleType = normalizeRoleType(entry['角色类型']);
+                    entry['角色类型'] = normalizedRoleType || '普通配角';
+                }
+            }
+        }
+        return data;
     }
 
     function repairJsonUnescapedQuotes(jsonStr) {
@@ -160,7 +194,7 @@ export function createParserService(deps = {}) {
         };
 
         const directResult = tryParse(directText);
-        if (directResult.ok) return directResult.value;
+        if (directResult.ok) return normalizeParsedWorldbookData(directResult.value);
 
         let fenced = directText.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
         const first = fenced.indexOf('{');
@@ -168,7 +202,7 @@ export function createParserService(deps = {}) {
         if (first !== -1 && last > first) fenced = fenced.substring(first, last + 1);
 
         const fencedResult = tryParse(fenced);
-        if (fencedResult.ok) return fencedResult.value;
+        if (fencedResult.ok) return normalizeParsedWorldbookData(fencedResult.value);
 
         if (strict) {
             const summary = directText.slice(0, 200).replace(/\s+/g, ' ');
@@ -177,7 +211,7 @@ export function createParserService(deps = {}) {
 
         try {
             const repaired = repairJsonUnescapedQuotes(fenced);
-            return JSON.parse(repaired);
+            return normalizeParsedWorldbookData(JSON.parse(repaired));
         } catch (repairError) {
             debugLog('修复未转义引号后仍解析失败，进入bracket补全/regex fallback');
         }
@@ -187,11 +221,11 @@ export function createParserService(deps = {}) {
         if (open > close) {
             const patched = fenced + '}'.repeat(open - close);
             try {
-                return JSON.parse(patched);
+                return normalizeParsedWorldbookData(JSON.parse(patched));
             } catch (patchError) {
                 try {
                     const repairedPatched = repairJsonUnescapedQuotes(patched);
-                    return JSON.parse(repairedPatched);
+                    return normalizeParsedWorldbookData(JSON.parse(repairedPatched));
                 } catch (patchRepairError) {
                     debugLog('补全括号与修复引号后仍失败，进入regex fallback');
                 }
@@ -200,7 +234,7 @@ export function createParserService(deps = {}) {
 
         const extracted = extractWorldbookDataByRegex(fenced);
         if (extracted && typeof extracted === 'object' && Object.keys(extracted).length > 0) {
-            return extracted;
+            return normalizeParsedWorldbookData(extracted);
         }
 
         const summary = directText.slice(0, 200).replace(/\s+/g, ' ');

@@ -49,6 +49,8 @@ export function createModalEventBinder(deps) {
         showConsolidateCategorySelector,
         showCleanTagsModal,
         showAliasMergeUI,
+        showStoryOutlinePanel,
+        showCurrentChapterPanel,
         updateStreamContent,
         showPromptPreview,
         showPlotOutlineConfigModal,
@@ -124,6 +126,8 @@ export function createModalEventBinder(deps) {
             showConsolidateCategorySelector,
             showCleanTagsModal,
             showAliasMergeUI,
+            showStoryOutlinePanel,
+            showCurrentChapterPanel,
         });
         bindStreamEventsUI({ updateStreamContent });
         bindExportEventsUI({
