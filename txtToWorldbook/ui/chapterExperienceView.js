@@ -118,6 +118,15 @@ export function createChapterExperienceView(deps = {}) {
             return;
         }
 
+        if (mode === 'outline' || mode === 'current') {
+            restoreResultFromForcedHide(resultSection);
+            if (typeof showResultSection === 'function') {
+                showResultSection(true);
+            }
+            forceShowWithRestore(resultSection);
+            return;
+        }
+
         restoreFromForcedShow(resultSection);
         if (typeof showResultSection === 'function') {
             showResultSection(false);
