@@ -8,7 +8,7 @@ export function createSettingsPersistenceService(deps) {
     } = deps;
 
     function saveCurrentSettings() {
-        AppState.settings.chunkSize = parseInt(document.getElementById('ttw-chunk-size')?.value) || 15000;
+        AppState.settings.chunkSize = parseInt(document.getElementById('ttw-chunk-size')?.value) || 8000;
         AppState.settings.apiTimeout = (parseInt(document.getElementById('ttw-api-timeout')?.value) || 120) * 1000;
         AppState.processing.incrementalMode = document.getElementById('ttw-incremental-mode')?.checked ?? true;
         AppState.processing.volumeMode = document.getElementById('ttw-volume-mode')?.checked ?? false;
@@ -32,6 +32,8 @@ export function createSettingsPersistenceService(deps) {
         AppState.settings.customApiProvider = document.getElementById('ttw-api-provider')?.value || 'openai-compatible';
         AppState.settings.customApiKey = document.getElementById('ttw-api-key')?.value || '';
         AppState.settings.customApiEndpoint = document.getElementById('ttw-api-endpoint')?.value || '';
+        const apiMaxTokens = parseInt(document.getElementById('ttw-api-max-tokens')?.value, 10);
+        AppState.settings.customApiMaxTokens = Number.isFinite(apiMaxTokens) ? Math.max(1, Math.min(8192, apiMaxTokens)) : 2048;
 
         const modelSelectContainer = document.getElementById('ttw-model-select-container');
         const modelSelect = document.getElementById('ttw-model-select');
@@ -59,10 +61,23 @@ export function createSettingsPersistenceService(deps) {
             if (saved) {
                 const parsed = JSON.parse(saved);
                 AppState.settings = { ...defaultSettings, ...parsed };
+
+                // 迁移旧默认配置到更稳妥的新默认（仅迁移历史默认值，不覆盖用户自定义值）
+                if (parsed.chunkSize === 15000) {
+                    AppState.settings.chunkSize = 8000;
+                }
+                if (parsed.parallelConcurrency === 3) {
+                    AppState.settings.parallelConcurrency = 1;
+                }
+
                 AppState.processing.volumeMode = AppState.settings.useVolumeMode || false;
                 AppState.config.parallel.enabled = AppState.settings.parallelEnabled !== undefined ? AppState.settings.parallelEnabled : true;
-                AppState.config.parallel.concurrency = AppState.settings.parallelConcurrency || 3;
+                AppState.config.parallel.concurrency = AppState.settings.parallelConcurrency || 1;
                 AppState.config.parallel.mode = AppState.settings.parallelMode || 'independent';
+                const maxTokens = parseInt(AppState.settings.customApiMaxTokens, 10);
+                AppState.settings.customApiMaxTokens = Number.isFinite(maxTokens)
+                    ? Math.max(1, Math.min(8192, maxTokens))
+                    : 2048;
 
                 if (AppState.settings.chapterRegexPattern) {
                     AppState.config.chapterRegex.pattern = AppState.settings.chapterRegexPattern;

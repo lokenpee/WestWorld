@@ -21,8 +21,10 @@ export function createChapterExperienceView(deps = {}) {
         startFirstButton: 'ttw-start-reading-first',
         viewTabs: 'ttw-view-nav',
         txtModeButton: 'ttw-view-mode-txt',
+        progressModeButton: 'ttw-view-mode-progress',
         outlineModeButton: 'ttw-view-mode-outline',
         currentModeButton: 'ttw-view-mode-current',
+        progressSection: 'ttw-progress-section',
         txtModeClass: 'ttw-mode-txt',
     };
 
@@ -61,6 +63,7 @@ export function createChapterExperienceView(deps = {}) {
     function setModeTabActive(mode) {
         const tabMap = {
             txt: selectors.txtModeButton,
+            progress: selectors.progressModeButton,
             outline: selectors.outlineModeButton,
             current: selectors.currentModeButton,
         };
@@ -189,11 +192,13 @@ export function createChapterExperienceView(deps = {}) {
             .replace(/'/g, '&#39;');
     }
 
-    function setSectionVisibility({ showOutline = false, showCurrent = false }) {
+    function setSectionVisibility({ showOutline = false, showCurrent = false, showProgress = false }) {
         const outlineSection = document.getElementById(selectors.outlineSection);
         const currentSection = document.getElementById(selectors.currentSection);
+        const progressSection = document.getElementById(selectors.progressSection);
         if (outlineSection) outlineSection.style.display = showOutline ? 'block' : 'none';
         if (currentSection) currentSection.style.display = showCurrent ? 'block' : 'none';
+        if (progressSection) progressSection.style.display = showProgress ? 'block' : 'none';
     }
 
     function renderOutlineList() {
@@ -467,7 +472,7 @@ export function createChapterExperienceView(deps = {}) {
         setModeTabActive('current');
         setTxtSectionsVisible(false);
         setResultSectionVisibleForMode('current');
-        setSectionVisibility({ showOutline: false, showCurrent: true });
+        setSectionVisibility({ showOutline: false, showCurrent: true, showProgress: false });
         renderCurrentPanel();
         ensureState();
         await ensureOpeningForChapter(AppState.experience.currentChapterIndex || 0);
@@ -477,15 +482,22 @@ export function createChapterExperienceView(deps = {}) {
         setModeTabActive('outline');
         setTxtSectionsVisible(false);
         setResultSectionVisibleForMode('outline');
-        setSectionVisibility({ showOutline: true, showCurrent: false });
+        setSectionVisibility({ showOutline: true, showCurrent: false, showProgress: false });
         renderOutlineList();
+    }
+
+    function showProgressPanelInternal() {
+        setModeTabActive('progress');
+        setTxtSectionsVisible(false);
+        setResultSectionVisibleForMode('progress');
+        setSectionVisibility({ showOutline: false, showCurrent: false, showProgress: true });
     }
 
     function showTxtConverterPanel() {
         setModeTabActive('txt');
         setTxtSectionsVisible(true);
         setResultSectionVisibleForMode('txt');
-        setSectionVisibility({ showOutline: false, showCurrent: false });
+        setSectionVisibility({ showOutline: false, showCurrent: false, showProgress: false });
     }
 
     async function handleOutlineAction(action, index) {
@@ -559,6 +571,10 @@ export function createChapterExperienceView(deps = {}) {
             }
             if (view === 'current') {
                 await showCurrentChapterPanelInternal();
+                return;
+            }
+            if (view === 'progress') {
+                showProgressPanelInternal();
             }
         });
     }
@@ -597,6 +613,10 @@ export function createChapterExperienceView(deps = {}) {
         showCurrentChapterPanel: async () => {
             preparePanels();
             await showCurrentChapterPanelInternal();
+        },
+        showProgressPanel: () => {
+            preparePanels();
+            showProgressPanelInternal();
         },
         renderStoryOutline: () => {
             preparePanels();

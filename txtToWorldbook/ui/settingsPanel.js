@@ -22,6 +22,10 @@
             <label>模型</label>
             <input type="text" id="ttw-api-model" value="gemini-2.5-flash" placeholder="模型名称">
         </div>
+        <div class="ttw-setting-item" id="ttw-max-tokens-container">
+            <label>Max Tokens <span style="opacity:0.6;font-size:11px;">(OpenAI兼容建议 1024-4096)</span></label>
+            <input type="number" id="ttw-api-max-tokens" value="2048" min="1" max="8192" class="ttw-input" placeholder="输出token上限">
+        </div>
         <div class="ttw-setting-item" id="ttw-model-select-container" style="display:none;">
             <label>模型</label>
             <select id="ttw-model-select">
@@ -47,7 +51,7 @@ function buildParallelConfigHtml() {
             </label>
             <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
                 并发数
-                <input type="number" id="ttw-parallel-concurrency" value="3" min="1" max="10" class="ttw-input-small">
+                <input type="number" id="ttw-parallel-concurrency" value="1" min="1" max="10" class="ttw-input-small">
             </label>
         </div>
         <div style="margin-top:10px;">
@@ -79,7 +83,7 @@ function buildBasicSettingsHtml() {
     <div style="display:flex;gap:12px;margin-bottom:12px;align-items:flex-end;">
         <div style="flex:1;">
             <label class="ttw-label">每块字数</label>
-            <input type="number" id="ttw-chunk-size" value="15000" min="1000" max="500000" class="ttw-input">
+            <input type="number" id="ttw-chunk-size" value="8000" min="1000" max="500000" class="ttw-input">
         </div>
         <div style="flex:1;">
             <label class="ttw-label">API超时(秒)</label>
@@ -400,7 +404,7 @@ function buildQueueSectionHtml() {
 
 function buildProgressSectionHtml() {
     return `
-    <div class="ttw-section ttw-mode-txt" id="ttw-progress-section" style="display:none;">
+    <div class="ttw-section" id="ttw-progress-section" style="display:none;">
         <div class="ttw-section-header"><span>⏳ 处理进度</span></div>
         <div class="ttw-section-content">
             <div class="ttw-progress-bar">
@@ -504,6 +508,7 @@ function buildViewNavHtml() {
     return `
     <div class="ttw-view-nav" id="ttw-view-nav">
         <button id="ttw-view-mode-txt" class="ttw-view-tab active" data-view="txt">📚 TXT转世界书</button>
+        <button id="ttw-view-mode-progress" class="ttw-view-tab" data-view="progress">⏳ 处理进度</button>
         <button id="ttw-view-mode-outline" class="ttw-view-tab" data-view="outline">🧭 故事大纲</button>
         <button id="ttw-view-mode-current" class="ttw-view-tab" data-view="current">🎬 当前章节概览</button>
     </div>`;
@@ -593,6 +598,9 @@ export function hydrateSettingsFromState(deps = {}) {
 
     const apiModelEl = document.getElementById('ttw-api-model');
     if (apiModelEl) apiModelEl.value = AppState.settings.customApiModel;
+
+    const apiMaxTokensEl = document.getElementById('ttw-api-max-tokens');
+    if (apiMaxTokensEl) apiMaxTokensEl.value = AppState.settings.customApiMaxTokens || 2048;
 
     const forceChapterMarkerEl = document.getElementById('ttw-force-chapter-marker');
     if (forceChapterMarkerEl) forceChapterMarkerEl.checked = AppState.settings.forceChapterMarker;

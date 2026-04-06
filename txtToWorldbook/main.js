@@ -931,6 +931,7 @@ const chapterExperienceView = createChapterExperienceView({
 });
 const {
     showTxtConverterPanel,
+    showProgressPanel,
     showStoryOutlinePanel,
     showCurrentChapterPanel,
 } = chapterExperienceView;
@@ -1173,6 +1174,7 @@ shellRuntime = createShellRuntime(createShellRuntimeConfig({
     showCleanTagsModal: (...args) => showCleanTagsModal(...args),
     showAliasMergeUI: (...args) => showAliasMergeUI(...args),
     showTxtConverterPanel: (...args) => showTxtConverterPanel(...args),
+    showProgressPanel: (...args) => showProgressPanel(...args),
     showStoryOutlinePanel: (...args) => showStoryOutlinePanel(...args),
     showCurrentChapterPanel: (...args) => showCurrentChapterPanel(...args),
     updateStreamContent,

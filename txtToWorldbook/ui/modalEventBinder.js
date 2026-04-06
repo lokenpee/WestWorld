@@ -50,6 +50,7 @@ export function createModalEventBinder(deps) {
         showCleanTagsModal,
         showAliasMergeUI,
         showTxtConverterPanel,
+        showProgressPanel,
         showStoryOutlinePanel,
         showCurrentChapterPanel,
         updateStreamContent,
@@ -128,6 +129,7 @@ export function createModalEventBinder(deps) {
             showCleanTagsModal,
             showAliasMergeUI,
             showTxtConverterPanel,
+            showProgressPanel,
             showStoryOutlinePanel,
             showCurrentChapterPanel,
         });

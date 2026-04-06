@@ -50,6 +50,41 @@
         return AppState.processing.status || 'idle';
     };
 
+    function extractStatusCode(error) {
+        if (typeof error?.status === 'number') {
+            return error.status;
+        }
+        const message = String(error?.message || '');
+        const explicitMatch = message.match(/API请求失败:\s*(\d{3})/i);
+        if (explicitMatch) {
+            return parseInt(explicitMatch[1], 10);
+        }
+        const genericMatch = message.match(/\bstatus\s*[:=]\s*(\d{3})\b/i);
+        if (genericMatch) {
+            return parseInt(genericMatch[1], 10);
+        }
+        return null;
+    }
+
+    function shouldRetryError(error) {
+        const status = extractStatusCode(error);
+        if (status === 429) return true;
+        if (status >= 500 && status < 600) return true;
+        if (status >= 400 && status < 500) return false;
+
+        const message = String(error?.message || '').toLowerCase();
+        return (
+            message.includes('timeout') ||
+            message.includes('超时') ||
+            message.includes('network') ||
+            message.includes('网络') ||
+            message.includes('fetch failed') ||
+            message.includes('econnreset') ||
+            message.includes('etimedout') ||
+            message.includes('eai_again')
+        );
+    }
+
     function buildRelevantWorldbookContext(memoryContent, maxEntries = 8) {
         const content = String(memoryContent || '');
         if (!content.trim()) return '';
@@ -249,11 +284,15 @@
                 return assets;
             } catch (error) {
                 lastError = error;
-                if (attempt < maxRetries && !AppState.processing.isStopped) {
+                const canRetry = shouldRetryError(error);
+                if (attempt < maxRetries && !AppState.processing.isStopped && canRetry) {
                     const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
                     updateStreamContent(`⚠️ [第${index + 1}章] 大纲生成失败，${delay / 1000}秒后重试...\n`);
                     await new Promise((resolve) => setTimeout(resolve, delay));
                     continue;
+                }
+                if (!canRetry) {
+                    updateStreamContent(`🛑 [第${index + 1}章] 大纲请求为不可重试错误，已停止自动重试\n`);
                 }
             }
         }
@@ -354,11 +393,16 @@
 
             if (isTokenLimitError(error.message)) throw new Error(`TOKEN_LIMIT:${index}`);
 
-            if (retryCount < maxRetries && !AppState.processing.isStopped) {
+            const canRetry = shouldRetryError(error);
+            if (retryCount < maxRetries && !AppState.processing.isStopped && canRetry) {
                 const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
                 updateStreamContent(`🔄 [第${chapterIndex}章] ${delay / 1000}秒后重试...\n`);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 return processMemoryChunkIndependent({ index, retryCount: retryCount + 1, customPromptSuffix });
+            }
+
+            if (!canRetry) {
+                updateStreamContent(`🛑 [第${chapterIndex}章] 检测到不可重试错误，已停止自动重试\n`);
             }
             throw error;
         }
@@ -565,11 +609,16 @@ ${'='.repeat(50)}
                 }
             }
 
-            if (retryCount < maxRetries) {
+            const canRetry = shouldRetryError(error);
+            if (retryCount < maxRetries && canRetry) {
                 const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 10000);
                 updateProgress(progress, `处理失败，${retryDelay / 1000}秒后重试`);
                 await new Promise(r => setTimeout(r, retryDelay));
                 return processMemoryChunk(index, retryCount + 1);
+            }
+
+            if (!canRetry) {
+                updateStreamContent(`🛑 [第${chapterIndex}章] 检测到不可重试错误，已停止自动重试\n`);
             }
 
             memory.processed = true;

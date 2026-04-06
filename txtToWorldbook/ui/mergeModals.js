@@ -1,7 +1,7 @@
 ﻿export function buildAliasCategorySelectModal(availableCategories, worldbookByCategory, escapeHtml) {
     return availableCategories.map((cat) => {
         const count = Object.keys(worldbookByCategory[cat] || {}).length;
-        const isChecked = cat === '角色' ? 'checked' : '';
+        const isChecked = 'checked';
         return `
 <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(155,89,182,0.1);border-radius:6px;margin-bottom:6px;cursor:pointer;">
 <input type="checkbox" class="ttw-alias-cat-cb" data-cat="${cat}" ${isChecked} style="width:16px;height:16px;accent-color:#9b59b6;">

@@ -26,6 +26,7 @@ export function createApiModeView(deps = {}) {
         const modelActionsContainer = document.getElementById('ttw-model-actions');
         const modelSelectContainer = document.getElementById('ttw-model-select-container');
         const modelInputContainer = document.getElementById('ttw-model-input-container');
+        const maxTokensContainer = document.getElementById('ttw-max-tokens-container');
 
         if (provider === 'openai-compatible' || provider === 'gemini' || provider === 'anthropic') {
             if (endpointContainer) endpointContainer.style.display = 'block';
@@ -37,10 +38,12 @@ export function createApiModeView(deps = {}) {
             if (modelActionsContainer) modelActionsContainer.style.display = 'flex';
             if (modelInputContainer) modelInputContainer.style.display = 'block';
             if (modelSelectContainer) modelSelectContainer.style.display = 'none';
+            if (maxTokensContainer) maxTokensContainer.style.display = 'block';
         } else {
             if (modelActionsContainer) modelActionsContainer.style.display = 'none';
             if (modelSelectContainer) modelSelectContainer.style.display = 'none';
             if (modelInputContainer) modelInputContainer.style.display = 'block';
+            if (maxTokensContainer) maxTokensContainer.style.display = 'none';
         }
 
         updateModelStatus('', '');

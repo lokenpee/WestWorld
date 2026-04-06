@@ -10,6 +10,12 @@ export function createApiService(deps = {}) {
         applyMessageChain,
     } = deps;
 
+    function normalizeMaxTokens(value, fallback = 2048) {
+        const parsed = parseInt(value, 10);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.max(1, Math.min(8192, parsed));
+    }
+
     async function callSillyTavernAPI(messages, taskId = null) {
         const timeout = AppState.settings.apiTimeout || 120000;
         const logPrefix = taskId !== null ? `[任务${taskId}]` : '';
@@ -76,6 +82,7 @@ export function createApiService(deps = {}) {
         const apiKey = AppState.settings.customApiKey;
         const endpoint = AppState.settings.customApiEndpoint;
         const model = AppState.settings.customApiModel;
+        const customApiMaxTokens = normalizeMaxTokens(AppState.settings.customApiMaxTokens, 2048);
         const openaiMessages = messages.map((m) => ({ role: m.role, content: m.content }));
         let requestUrl = '';
         let requestOptions = {};
@@ -96,7 +103,7 @@ export function createApiService(deps = {}) {
                         model: model || 'claude-sonnet-4-20250514',
                         messages: openaiMessages,
                         temperature: 0.3,
-                        max_tokens: 8192,
+                        max_tokens: 64000,
                     }),
                 };
                 break;
@@ -164,7 +171,7 @@ export function createApiService(deps = {}) {
                         model: openaiModel,
                         messages: openaiMessages,
                         temperature: 0.3,
-                        max_tokens: 64000,
+                        max_tokens: customApiMaxTokens,
                         stream: true,
                     }),
                 };
@@ -311,6 +318,7 @@ export function createApiService(deps = {}) {
         }
 
         Logger.info('API', `快速测试: ${requestUrl} 模型: ${model}`);
+        const testMaxTokens = Math.min(normalizeMaxTokens(AppState.settings.customApiMaxTokens, 1024), 1024);
 
         const startTime = Date.now();
         const data = await APICaller.getJSON(requestUrl, {
@@ -319,7 +327,7 @@ export function createApiService(deps = {}) {
             body: JSON.stringify({
                 model,
                 messages: [{ role: 'user', content: 'Say "OK" if you can hear me.' }],
-                max_tokens: 100,
+                max_tokens: testMaxTokens,
                 temperature: 0.1,
             }),
         });

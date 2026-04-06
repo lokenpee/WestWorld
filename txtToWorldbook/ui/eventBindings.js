@@ -17,6 +17,7 @@
         showCleanTagsModal,
         showAliasMergeUI,
         showTxtConverterPanel,
+        showProgressPanel,
         showStoryOutlinePanel,
         showCurrentChapterPanel,
     } = deps;
@@ -51,6 +52,11 @@
     const currentChapterBtn = document.getElementById('ttw-open-current-chapter');
     if (currentChapterBtn && typeof showCurrentChapterPanel === 'function') {
         currentChapterBtn.addEventListener('click', showCurrentChapterPanel);
+    }
+
+    const progressBtn = document.getElementById('ttw-open-progress');
+    if (progressBtn && typeof showProgressPanel === 'function') {
+        progressBtn.addEventListener('click', showProgressPanel);
     }
 
     if (typeof showTxtConverterPanel === 'function') {
@@ -251,7 +257,7 @@ export function bindSettingEvents(deps = {}) {
         '.ttw-reset-prompt': { click: (e, btn) => { const type = btn.getAttribute('data-type'); const textarea = document.getElementById(`ttw-${type}-prompt`); if (textarea) { textarea.value = ''; saveCurrentSettings(); } } }
     });
 
-    ['ttw-api-key', 'ttw-api-endpoint', 'ttw-api-model', 'ttw-chunk-size', 'ttw-api-timeout'].forEach((id) => {
+    ['ttw-api-key', 'ttw-api-endpoint', 'ttw-api-model', 'ttw-api-max-tokens', 'ttw-chunk-size', 'ttw-api-timeout'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', saveCurrentSettings);
     });

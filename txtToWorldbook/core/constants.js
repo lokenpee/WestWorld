@@ -23,7 +23,7 @@ export const DEFAULT_PLOT_OUTLINE_CONFIG = {
 
 export const DEFAULT_PARALLEL_CONFIG = {
     enabled: true,
-    concurrency: 3,
+    concurrency: 1,
     mode: 'independent'
 };
 
@@ -189,7 +189,7 @@ export const defaultConsolidatePrompt = `你是世界书条目整理专家。请
 请直接输出整理后的内容（纯文本，不要JSON包装）：`;
 
 export const defaultSettings = {
-    chunkSize: 15000,
+    chunkSize: 8000,
     enablePlotOutline: false,
     enableLiteraryStyle: false,
     language: 'zh',
@@ -199,7 +199,7 @@ export const defaultSettings = {
     useVolumeMode: false,
     apiTimeout: 120000,
     parallelEnabled: true,
-    parallelConcurrency: 3,
+    parallelConcurrency: 1,
     parallelMode: 'independent',
     useTavernApi: true,
     customMergePrompt: '',
@@ -213,6 +213,7 @@ export const defaultSettings = {
     customApiKey: '',
     customApiEndpoint: '',
     customApiModel: 'gemini-2.5-flash',
+    customApiMaxTokens: 2048,
     forceChapterMarker: true,
     chapterRegexPattern: '第[零一二三四五六七八九十百千万0-9]+[章回卷节部篇]',
     useCustomChapterRegex: false,
