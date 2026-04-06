@@ -49,6 +49,7 @@ export function createModalEventBinder(deps) {
         showConsolidateCategorySelector,
         showCleanTagsModal,
         showAliasMergeUI,
+        showTxtConverterPanel,
         showStoryOutlinePanel,
         showCurrentChapterPanel,
         updateStreamContent,
@@ -126,6 +127,7 @@ export function createModalEventBinder(deps) {
             showConsolidateCategorySelector,
             showCleanTagsModal,
             showAliasMergeUI,
+            showTxtConverterPanel,
             showStoryOutlinePanel,
             showCurrentChapterPanel,
         });

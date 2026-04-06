@@ -5,6 +5,7 @@ export function createChapterExperienceView(deps = {}) {
         callAPI,
         getLanguagePrefix,
         retryChapterOutline,
+        showResultSection,
     } = deps;
 
     const selectors = {
@@ -18,7 +19,87 @@ export function createChapterExperienceView(deps = {}) {
         chapterHint: 'ttw-current-chapter-hint',
         nextButton: 'ttw-next-chapter-btn',
         startFirstButton: 'ttw-start-reading-first',
+        viewTabs: 'ttw-view-nav',
+        txtModeButton: 'ttw-view-mode-txt',
+        outlineModeButton: 'ttw-view-mode-outline',
+        currentModeButton: 'ttw-view-mode-current',
+        txtModeClass: 'ttw-mode-txt',
     };
+
+    function hideWithRestore(el) {
+        if (!el) return;
+        if (el.dataset.swHiddenByMode === '1') return;
+        el.dataset.swHiddenByMode = '1';
+        el.dataset.swPrevDisplayMode = el.style.display || '';
+        el.style.display = 'none';
+    }
+
+    function restoreFromHide(el) {
+        if (!el) return;
+        if (el.dataset.swHiddenByMode !== '1') return;
+        el.style.display = el.dataset.swPrevDisplayMode || '';
+        delete el.dataset.swHiddenByMode;
+        delete el.dataset.swPrevDisplayMode;
+    }
+
+    function forceShowWithRestore(el) {
+        if (!el) return;
+        if (el.dataset.swShownByMode === '1') return;
+        el.dataset.swShownByMode = '1';
+        el.dataset.swPrevDisplayForced = el.style.display || '';
+        el.style.display = 'block';
+    }
+
+    function restoreFromForcedShow(el) {
+        if (!el) return;
+        if (el.dataset.swShownByMode !== '1') return;
+        el.style.display = el.dataset.swPrevDisplayForced || '';
+        delete el.dataset.swShownByMode;
+        delete el.dataset.swPrevDisplayForced;
+    }
+
+    function setModeTabActive(mode) {
+        const tabMap = {
+            txt: selectors.txtModeButton,
+            outline: selectors.outlineModeButton,
+            current: selectors.currentModeButton,
+        };
+        Object.entries(tabMap).forEach(([key, id]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (key === mode) {
+                el.classList.add('active');
+            } else {
+                el.classList.remove('active');
+            }
+        });
+    }
+
+    function setTxtSectionsVisible(show) {
+        const sections = document.querySelectorAll(`.${selectors.txtModeClass}`);
+        sections.forEach((el) => {
+            if (show) {
+                restoreFromHide(el);
+            } else {
+                hideWithRestore(el);
+            }
+        });
+    }
+
+    function setResultSectionVisibleForMode(mode) {
+        const resultSection = document.getElementById('ttw-result-section');
+        if (!resultSection) return;
+
+        if (mode === 'txt') {
+            restoreFromForcedShow(resultSection);
+            return;
+        }
+
+        if (typeof showResultSection === 'function') {
+            showResultSection(true);
+        }
+        forceShowWithRestore(resultSection);
+    }
 
     function ensureState() {
         if (!AppState.experience) {
@@ -382,16 +463,29 @@ export function createChapterExperienceView(deps = {}) {
         await ensureOpeningForChapter(index);
     }
 
-    async function showCurrentChapterPanel() {
+    async function showCurrentChapterPanelInternal() {
+        setModeTabActive('current');
+        setTxtSectionsVisible(false);
+        setResultSectionVisibleForMode('current');
         setSectionVisibility({ showOutline: false, showCurrent: true });
         renderCurrentPanel();
         ensureState();
         await ensureOpeningForChapter(AppState.experience.currentChapterIndex || 0);
     }
 
-    function showStoryOutlinePanel() {
+    function showStoryOutlinePanelInternal() {
+        setModeTabActive('outline');
+        setTxtSectionsVisible(false);
+        setResultSectionVisibleForMode('outline');
         setSectionVisibility({ showOutline: true, showCurrent: false });
         renderOutlineList();
+    }
+
+    function showTxtConverterPanel() {
+        setModeTabActive('txt');
+        setTxtSectionsVisible(true);
+        setResultSectionVisibleForMode('txt');
+        setSectionVisibility({ showOutline: false, showCurrent: false });
     }
 
     async function handleOutlineAction(action, index) {
@@ -416,7 +510,7 @@ export function createChapterExperienceView(deps = {}) {
 
         if (action === 'view-chapter') {
             await enterChapter(index);
-            setSectionVisibility({ showOutline: false, showCurrent: true });
+            await showCurrentChapterPanelInternal();
             return;
         }
     }
@@ -440,9 +534,33 @@ export function createChapterExperienceView(deps = {}) {
             startBtn.dataset.bound = '1';
             startBtn.addEventListener('click', async () => {
                 await enterChapter(0);
-                setSectionVisibility({ showOutline: false, showCurrent: true });
+                await showCurrentChapterPanelInternal();
             });
         }
+    }
+
+    function bindViewModeEvents() {
+        const nav = document.getElementById(selectors.viewTabs);
+        if (!nav || nav.dataset.bound) return;
+
+        nav.dataset.bound = '1';
+        nav.addEventListener('click', async (event) => {
+            const btn = event.target.closest('.ttw-view-tab[data-view]');
+            if (!btn) return;
+
+            const view = btn.getAttribute('data-view');
+            if (view === 'txt') {
+                showTxtConverterPanel();
+                return;
+            }
+            if (view === 'outline') {
+                showStoryOutlinePanelInternal();
+                return;
+            }
+            if (view === 'current') {
+                await showCurrentChapterPanelInternal();
+            }
+        });
     }
 
     function bindCurrentEvents() {
@@ -462,18 +580,23 @@ export function createChapterExperienceView(deps = {}) {
     }
 
     function preparePanels() {
+        bindViewModeEvents();
         bindOutlineEvents();
         bindCurrentEvents();
     }
 
     return {
+        showTxtConverterPanel: () => {
+            preparePanels();
+            showTxtConverterPanel();
+        },
         showStoryOutlinePanel: () => {
             preparePanels();
-            showStoryOutlinePanel();
+            showStoryOutlinePanelInternal();
         },
         showCurrentChapterPanel: async () => {
             preparePanels();
-            await showCurrentChapterPanel();
+            await showCurrentChapterPanelInternal();
         },
         renderStoryOutline: () => {
             preparePanels();

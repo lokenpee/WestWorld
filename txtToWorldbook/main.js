@@ -927,8 +927,10 @@ const chapterExperienceView = createChapterExperienceView({
     callAPI,
     getLanguagePrefix,
     retryChapterOutline,
+    showResultSection,
 });
 const {
+    showTxtConverterPanel,
     showStoryOutlinePanel,
     showCurrentChapterPanel,
 } = chapterExperienceView;
@@ -1170,6 +1172,7 @@ shellRuntime = createShellRuntime(createShellRuntimeConfig({
     showConsolidateCategorySelector: (...args) => showConsolidateCategorySelector(...args),
     showCleanTagsModal: (...args) => showCleanTagsModal(...args),
     showAliasMergeUI: (...args) => showAliasMergeUI(...args),
+    showTxtConverterPanel: (...args) => showTxtConverterPanel(...args),
     showStoryOutlinePanel: (...args) => showStoryOutlinePanel(...args),
     showCurrentChapterPanel: (...args) => showCurrentChapterPanel(...args),
     updateStreamContent,

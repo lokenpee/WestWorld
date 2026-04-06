@@ -16,6 +16,7 @@
         showConsolidateCategorySelector,
         showCleanTagsModal,
         showAliasMergeUI,
+        showTxtConverterPanel,
         showStoryOutlinePanel,
         showCurrentChapterPanel,
     } = deps;
@@ -50,6 +51,10 @@
     const currentChapterBtn = document.getElementById('ttw-open-current-chapter');
     if (currentChapterBtn && typeof showCurrentChapterPanel === 'function') {
         currentChapterBtn.addEventListener('click', showCurrentChapterPanel);
+    }
+
+    if (typeof showTxtConverterPanel === 'function') {
+        showTxtConverterPanel();
     }
 }
 

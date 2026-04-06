@@ -149,7 +149,7 @@ function buildDebugModeHtml() {
 
 export function buildSettingsHtml() {
     return `
-    <div class="ttw-section ttw-settings-section">
+    <div class="ttw-section ttw-settings-section ttw-mode-txt">
         <div class="ttw-section-header" data-section="settings">
             <span>⚙️ 设置</span>
             <span class="ttw-collapse-icon">▼</span>
@@ -178,7 +178,7 @@ export function buildSettingsHtml() {
 
 function buildDefaultEntriesSectionHtml() {
     return `
-    <div class="ttw-prompt-section" style="margin-top:16px;border:1px solid var(--SmartThemeBorderColor,#444);border-radius:8px;overflow:hidden;">
+    <div class="ttw-prompt-section ttw-mode-txt" style="margin-top:16px;border:1px solid var(--SmartThemeBorderColor,#444);border-radius:8px;overflow:hidden;">
         <div class="ttw-prompt-header ttw-prompt-header-green" data-target="ttw-default-entries-content">
             <div style="display:flex;align-items:center;gap:8px;">
                 <span>📚</span><span style="font-weight:500;">默认世界书条目</span>
@@ -323,7 +323,7 @@ function buildCategoriesSectionHtml() {
 
 function buildPromptConfigHtml() {
     return `
-    <div class="ttw-prompt-config">
+    <div class="ttw-prompt-config ttw-mode-txt">
         <div class="ttw-prompt-config-header">
             <span>📝 提示词配置</span>
             <div style="display:flex;gap:8px;">
@@ -342,7 +342,7 @@ function buildPromptConfigHtml() {
 
 function buildFileUploadSectionHtml() {
     return `
-    <div class="ttw-section">
+    <div class="ttw-section ttw-mode-txt">
         <div class="ttw-section-header">
             <span>📄 文件上传</span>
             <div style="display:flex;gap:8px;">
@@ -372,7 +372,7 @@ function buildFileUploadSectionHtml() {
 
 function buildQueueSectionHtml() {
     return `
-    <div class="ttw-section" id="ttw-queue-section" style="display:none;">
+    <div class="ttw-section ttw-mode-txt" id="ttw-queue-section" style="display:none;">
         <div class="ttw-section-header">
             <span>📋 章节队列</span>
             <div style="display:flex;gap:8px;margin-left:auto;">
@@ -400,7 +400,7 @@ function buildQueueSectionHtml() {
 
 function buildProgressSectionHtml() {
     return `
-    <div class="ttw-section" id="ttw-progress-section" style="display:none;">
+    <div class="ttw-section ttw-mode-txt" id="ttw-progress-section" style="display:none;">
         <div class="ttw-section-header"><span>⏳ 处理进度</span></div>
         <div class="ttw-section-content">
             <div class="ttw-progress-bar">
@@ -437,8 +437,6 @@ function buildResultSectionHtml() {
                 <button id="ttw-replace-btn" class="ttw-btn">🔄 替换</button>
                 <button id="ttw-view-worldbook" class="ttw-btn">📖 查看世界书</button>
                 <button id="ttw-view-history" class="ttw-btn">📜 修改历史</button>
-                <button id="ttw-open-story-outline" class="ttw-btn ttw-btn-secondary">🧭 故事大纲</button>
-                <button id="ttw-open-current-chapter" class="ttw-btn ttw-btn-secondary">🎬 当前章节概览</button>
                 <button id="ttw-consolidate-entries" class="ttw-btn" title="用AI整理条目，去除重复信息">🧹 整理条目</button>
                 <button id="ttw-clean-tags" class="ttw-btn" title="清除条目中的标签内容（不消耗Token）">🏷️ 清除标签</button>
                 <button id="ttw-alias-merge" class="ttw-btn" title="识别各分类中同一事物的不同称呼并合并">🔗 别名合并</button>
@@ -484,6 +482,7 @@ function buildResultSectionHtml() {
 function buildModalBodyHtml() {
     return `
     <div class="ttw-modal-body">
+        ${buildViewNavHtml()}
         ${buildFileUploadSectionHtml()}
         ${buildSettingsHtml()}
         ${buildDefaultEntriesSectionHtml()}
@@ -497,7 +496,16 @@ function buildModalBodyHtml() {
 function buildModalFooterHtml() {
     return `
     <div class="ttw-modal-footer">
-        <button id="ttw-start-btn" class="ttw-btn ttw-btn-primary" disabled>🚀 开始转换</button>
+        <button id="ttw-start-btn" class="ttw-btn ttw-btn-primary ttw-mode-txt" disabled>🚀 开始转换</button>
+    </div>`;
+}
+
+function buildViewNavHtml() {
+    return `
+    <div class="ttw-view-nav" id="ttw-view-nav">
+        <button id="ttw-view-mode-txt" class="ttw-view-tab active" data-view="txt">📚 TXT转世界书</button>
+        <button id="ttw-view-mode-outline" class="ttw-view-tab" data-view="outline">🧭 故事大纲</button>
+        <button id="ttw-view-mode-current" class="ttw-view-tab" data-view="current">🎬 当前章节概览</button>
     </div>`;
 }
 

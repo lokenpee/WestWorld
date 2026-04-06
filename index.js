@@ -98,25 +98,23 @@ function persistSettings() {
 function updateDrawerUI() {
     const iconEl = document.getElementById('storyweaver-icon');
     const panelEl = document.getElementById('storyweaver-content-panel');
-    if (!iconEl || !panelEl) return;
+    if (!iconEl) return;
 
     if (settings.panelCollapsed) {
         iconEl.classList.remove('openIcon');
         iconEl.classList.add('closedIcon');
-        panelEl.classList.remove('openDrawer');
-        panelEl.classList.add('closedDrawer');
+        if (panelEl) {
+            panelEl.classList.remove('openDrawer');
+            panelEl.classList.add('closedDrawer');
+        }
     } else {
         iconEl.classList.remove('closedIcon');
         iconEl.classList.add('openIcon');
-        panelEl.classList.remove('closedDrawer');
-        panelEl.classList.add('openDrawer');
+        if (panelEl) {
+            panelEl.classList.remove('closedDrawer');
+            panelEl.classList.add('openDrawer');
+        }
     }
-}
-
-function toggleDrawer() {
-    settings.panelCollapsed = !settings.panelCollapsed;
-    persistSettings();
-    updateDrawerUI();
 }
 
 async function openTxtToWorldbookPanel() {
@@ -165,28 +163,10 @@ async function setupUI() {
 
     // Rebind with namespace to avoid duplicated handlers on reload.
     $(document).off(`click${setupEventNamespace}`);
-    $(document).on(`click${setupEventNamespace}`, '#storyweaver-wrapper .drawer-toggle', (e) => {
+    $(document).on(`click${setupEventNamespace}`, '#storyweaver-wrapper .drawer-toggle', async (e) => {
         e.stopPropagation();
-        toggleDrawer();
-    });
-
-    $(document).on(`click${setupEventNamespace}`, '#storyweaver-open-converter', async () => {
         await openTxtToWorldbookPanel();
     });
-
-    $(document).on(`click${setupEventNamespace}`, (e) => {
-        if (!settings.panelCollapsed) {
-            const wrapper = document.getElementById('storyweaver-wrapper');
-            if (wrapper && !wrapper.contains(e.target)) {
-                settings.panelCollapsed = true;
-                persistSettings();
-                updateDrawerUI();
-            }
-        }
-    });
-
-    // 初始化 UI 状态
-    updateDrawerUI();
 }
 
 async function bootstrap() {
