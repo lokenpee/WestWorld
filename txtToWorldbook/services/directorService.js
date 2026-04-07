@@ -46,6 +46,53 @@ export function createDirectorService(deps = {}) {
         };
     }
 
+    function splitBeatCandidates(text, limit = 6) {
+        return String(text || '')
+            .split(/[，,。；;、\n]/)
+            .map((part) => toShortText(part, 60))
+            .filter(Boolean)
+            .slice(0, limit);
+    }
+
+    function ensureMinimumBeatCount(beats, fallbackText = '') {
+        const normalized = Array.isArray(beats)
+            ? beats.map((beat, idx) => normalizeBeat(beat, idx)).slice(0, 8)
+            : [];
+        const minCount = 3;
+        if (normalized.length >= minCount) {
+            return normalized;
+        }
+
+        const seen = new Set(normalized.map((beat) => beat.summary));
+        const candidates = splitBeatCandidates(fallbackText, 8);
+        for (const candidate of candidates) {
+            if (normalized.length >= minCount) break;
+            if (!candidate || seen.has(candidate)) continue;
+            normalized.push(normalizeBeat({
+                summary: candidate,
+                exitCondition: '出现明显推进动作或关键信息变化',
+            }, normalized.length));
+            seen.add(candidate);
+        }
+
+        const genericFallback = [
+            '继续在当前场景搜集线索并形成判断',
+            '与关键角色或环境发生互动以验证线索',
+            '在确认新信息后推进到下一步行动',
+        ];
+        for (const fallback of genericFallback) {
+            if (normalized.length >= minCount) break;
+            if (seen.has(fallback)) continue;
+            normalized.push(normalizeBeat({
+                summary: fallback,
+                exitCondition: '出现明确行动决策或关键反馈',
+            }, normalized.length));
+            seen.add(fallback);
+        }
+
+        return normalized.slice(0, 8).map((beat, idx) => normalizeBeat(beat, idx));
+    }
+
     function ensureChapterBeats(memory) {
         if (!memory || !memory.chapterScript || typeof memory.chapterScript !== 'object') {
             return [];
@@ -56,9 +103,10 @@ export function createDirectorService(deps = {}) {
         }
 
         if (memory.chapterScript.beats.length > 0) {
-            memory.chapterScript.beats = memory.chapterScript.beats
-                .map((beat, idx) => normalizeBeat(beat, idx))
-                .slice(0, 8);
+            memory.chapterScript.beats = ensureMinimumBeatCount(
+                memory.chapterScript.beats,
+                `${memory.chapterOutline || ''} ${memory.chapterScript.flow || ''}`
+            );
             return memory.chapterScript.beats;
         }
 
@@ -66,7 +114,10 @@ export function createDirectorService(deps = {}) {
             ? memory.chapterScript.keyNodes.map((n) => toShortText(n, 80)).filter(Boolean)
             : [];
 
-        memory.chapterScript.beats = keyNodes.map((node, idx) => normalizeBeat({ summary: node }, idx));
+        memory.chapterScript.beats = ensureMinimumBeatCount(
+            keyNodes.map((node, idx) => normalizeBeat({ summary: node }, idx)),
+            `${memory.chapterOutline || ''} ${keyNodes.join('，')}`
+        );
         return memory.chapterScript.beats;
     }
 
@@ -157,6 +208,319 @@ export function createDirectorService(deps = {}) {
         return lines.length > 0 ? lines.join('\n') : '无最近对话';
     }
 
+    function getLatestUserMessage(eventData) {
+        const eventChat = Array.isArray(eventData?.chat) ? eventData.chat : [];
+        if (eventChat.length > 0) {
+            for (let i = eventChat.length - 1; i >= 0; i--) {
+                const item = eventChat[i] || {};
+                const role = item.role || (item.is_user ? 'user' : 'assistant');
+                if (role !== 'user') continue;
+                const content = String(item.content || item.mes || '').trim();
+                if (content) return content;
+            }
+        }
+
+        try {
+            const st = typeof SillyTavern !== 'undefined' ? SillyTavern : null;
+            const chat = Array.isArray(st?.getContext?.()?.chat) ? st.getContext().chat : [];
+            for (let i = chat.length - 1; i >= 0; i--) {
+                const item = chat[i] || {};
+                if (!item.is_user) continue;
+                const content = String(item.mes || item.content || '').trim();
+                if (content) return content;
+            }
+        } catch (_) {
+            return '';
+        }
+
+        return '';
+    }
+
+    const INTENT_LABELS = {
+        advance: 'advance',
+        stay: 'stay',
+        neutral: 'neutral',
+        switch_scene: 'switch_scene',
+        skip: 'skip',
+        investigate: 'investigate',
+        search: 'search',
+        explore: 'explore',
+        travel: 'travel',
+        dialogue: 'dialogue',
+        negotiate: 'negotiate',
+        reflect: 'reflect',
+        plan: 'plan',
+        rest: 'rest',
+        stealth: 'stealth',
+        combat: 'combat',
+        summarize: 'summarize',
+        clarify: 'clarify',
+        request_hint: 'request_hint',
+        meta: 'meta',
+    };
+
+    const INTENT_ALIASES = new Map([
+        ['advance', INTENT_LABELS.advance],
+        ['推进', INTENT_LABELS.advance],
+        ['continue', INTENT_LABELS.advance],
+        ['go', INTENT_LABELS.advance],
+        ['forward', INTENT_LABELS.advance],
+        ['stay', INTENT_LABELS.stay],
+        ['hold', INTENT_LABELS.stay],
+        ['停留', INTENT_LABELS.stay],
+        ['neutral', INTENT_LABELS.neutral],
+        ['switch_scene', INTENT_LABELS.switch_scene],
+        ['switch', INTENT_LABELS.switch_scene],
+        ['scene_switch', INTENT_LABELS.switch_scene],
+        ['切换', INTENT_LABELS.switch_scene],
+        ['skip', INTENT_LABELS.skip],
+        ['fast_forward', INTENT_LABELS.skip],
+        ['跳过', INTENT_LABELS.skip],
+        ['investigate', INTENT_LABELS.investigate],
+        ['调查', INTENT_LABELS.investigate],
+        ['search', INTENT_LABELS.search],
+        ['寻找', INTENT_LABELS.search],
+        ['explore', INTENT_LABELS.explore],
+        ['探索', INTENT_LABELS.explore],
+        ['travel', INTENT_LABELS.travel],
+        ['前往', INTENT_LABELS.travel],
+        ['dialogue', INTENT_LABELS.dialogue],
+        ['talk', INTENT_LABELS.dialogue],
+        ['对话', INTENT_LABELS.dialogue],
+        ['negotiate', INTENT_LABELS.negotiate],
+        ['交涉', INTENT_LABELS.negotiate],
+        ['reflect', INTENT_LABELS.reflect],
+        ['回忆', INTENT_LABELS.reflect],
+        ['plan', INTENT_LABELS.plan],
+        ['计划', INTENT_LABELS.plan],
+        ['rest', INTENT_LABELS.rest],
+        ['休息', INTENT_LABELS.rest],
+        ['stealth', INTENT_LABELS.stealth],
+        ['潜行', INTENT_LABELS.stealth],
+        ['combat', INTENT_LABELS.combat],
+        ['战斗', INTENT_LABELS.combat],
+        ['summarize', INTENT_LABELS.summarize],
+        ['总结', INTENT_LABELS.summarize],
+        ['clarify', INTENT_LABELS.clarify],
+        ['澄清', INTENT_LABELS.clarify],
+        ['request_hint', INTENT_LABELS.request_hint],
+        ['提示', INTENT_LABELS.request_hint],
+        ['meta', INTENT_LABELS.meta],
+        ['规则', INTENT_LABELS.meta],
+    ]);
+
+    function normalizeIntentLabel(rawLabel) {
+        const text = String(rawLabel || '').trim();
+        if (!text) return '';
+        const lower = text.toLowerCase();
+        if (INTENT_ALIASES.has(lower)) return INTENT_ALIASES.get(lower);
+        if (INTENT_ALIASES.has(text)) return INTENT_ALIASES.get(text);
+        return '';
+    }
+
+    function detectUserIntent(userMessage) {
+        const text = String(userMessage || '').trim();
+        if (!text) {
+            return { kind: INTENT_LABELS.neutral, signal: '', confidence: 0.2, source: 'rule' };
+        }
+
+        const negationPattern = /(不|别|不要|先不|先别|暂时不要|先别去)/;
+
+        const ruleSets = [
+            {
+                kind: INTENT_LABELS.stay,
+                signal: 'stay-command',
+                score: 9,
+                patterns: [/停留|先不|先别|慢一点|等等|别推进|不要推进|不推进|先观察|继续聊|原地|等等再说|先看看/],
+            },
+            {
+                kind: INTENT_LABELS.skip,
+                signal: 'skip-command',
+                score: 8,
+                patterns: [/跳过|快进|略过|直接到|直接进入|跳到下一/],
+            },
+            {
+                kind: INTENT_LABELS.switch_scene,
+                signal: 'scene-switch',
+                score: 7,
+                patterns: [/切换场景|转场|换个地方|换个地点|离开这里|去到|进入新地点/],
+            },
+            {
+                kind: INTENT_LABELS.investigate,
+                signal: 'investigate',
+                score: 6,
+                patterns: [/调查|追踪|侦查|盘查|搜查|查看线索|找线索/],
+            },
+            {
+                kind: INTENT_LABELS.search,
+                signal: 'search',
+                score: 6,
+                patterns: [/寻找|搜索|搜寻|翻找|找一找|查找/],
+            },
+            {
+                kind: INTENT_LABELS.explore,
+                signal: 'explore',
+                score: 6,
+                patterns: [/探索|试探|查看周围|四处看看|环顾|走走看/],
+            },
+            {
+                kind: INTENT_LABELS.travel,
+                signal: 'travel',
+                score: 6,
+                patterns: [/前往|出发|赶往|去往|动身|离开/],
+            },
+            {
+                kind: INTENT_LABELS.dialogue,
+                signal: 'dialogue',
+                score: 5,
+                patterns: [/对话|交谈|聊聊|说说|问问|沟通|搭话/],
+            },
+            {
+                kind: INTENT_LABELS.negotiate,
+                signal: 'negotiate',
+                score: 5,
+                patterns: [/交涉|谈判|说服|劝说|威胁|试探口风/],
+            },
+            {
+                kind: INTENT_LABELS.reflect,
+                signal: 'reflect',
+                score: 5,
+                patterns: [/回忆|回想|梳理|思考一下|整理一下/],
+            },
+            {
+                kind: INTENT_LABELS.plan,
+                signal: 'plan',
+                score: 5,
+                patterns: [/计划|策划|商量一下|制定方案|下一步怎么做/],
+            },
+            {
+                kind: INTENT_LABELS.rest,
+                signal: 'rest',
+                score: 4,
+                patterns: [/休息|歇一歇|停下来|缓一缓/],
+            },
+            {
+                kind: INTENT_LABELS.stealth,
+                signal: 'stealth',
+                score: 4,
+                patterns: [/潜行|偷偷|隐蔽|躲起来|保持低调/],
+            },
+            {
+                kind: INTENT_LABELS.combat,
+                signal: 'combat',
+                score: 6,
+                patterns: [/战斗|攻击|出手|动手|开打|对抗/],
+            },
+            {
+                kind: INTENT_LABELS.summarize,
+                signal: 'summarize',
+                score: 4,
+                patterns: [/总结|概括|回顾一下|复盘/],
+            },
+            {
+                kind: INTENT_LABELS.clarify,
+                signal: 'clarify',
+                score: 4,
+                patterns: [/澄清|说明一下|解释一下|再说清楚/],
+            },
+            {
+                kind: INTENT_LABELS.request_hint,
+                signal: 'request-hint',
+                score: 4,
+                patterns: [/提示一下|给点提示|线索提示|帮我引导/],
+            },
+            {
+                kind: INTENT_LABELS.meta,
+                signal: 'meta',
+                score: 3,
+                patterns: [/规则|设定|玩法|系统说明|世界观设定/],
+            },
+            {
+                kind: INTENT_LABELS.advance,
+                signal: 'advance',
+                score: 7,
+                patterns: [/推进|继续|下一步|往前|向前|前进|行动|开始吧|继续剧情/],
+            },
+        ];
+
+        let best = { kind: INTENT_LABELS.neutral, signal: '', score: 0 };
+        for (const rule of ruleSets) {
+            if (rule.patterns.some((pattern) => pattern.test(text))) {
+                let score = rule.score;
+                if (negationPattern.test(text) && [INTENT_LABELS.advance, INTENT_LABELS.travel, INTENT_LABELS.switch_scene].includes(rule.kind)) {
+                    score -= 5;
+                }
+                if (score > best.score) {
+                    best = { kind: rule.kind, signal: rule.signal, score };
+                }
+            }
+        }
+
+        if (best.score <= 0) {
+            return { kind: INTENT_LABELS.neutral, signal: '', confidence: 0.25, source: 'rule' };
+        }
+
+        const confidence = Math.max(0.35, Math.min(0.95, best.score / 10));
+        return { kind: best.kind, signal: best.signal, confidence, source: 'rule' };
+    }
+
+    function resolveUserIntent({ modelIntent, ruleIntent }) {
+        const modelKind = normalizeIntentLabel(modelIntent?.kind || modelIntent?.label || modelIntent);
+        const modelConfidence = Number.isFinite(Number(modelIntent?.confidence))
+            ? Math.max(0, Math.min(1, Number(modelIntent.confidence)))
+            : 0;
+
+        if (modelKind && modelConfidence >= 0.6 && (ruleIntent?.confidence || 0) < 0.75) {
+            return {
+                kind: modelKind,
+                confidence: modelConfidence,
+                source: 'model',
+                rationale: toShortText(modelIntent?.rationale || modelIntent?.reason || '', 160),
+            };
+        }
+
+        if (ruleIntent?.kind && ruleIntent.kind !== INTENT_LABELS.neutral) {
+            return {
+                kind: ruleIntent.kind,
+                confidence: ruleIntent.confidence || 0.6,
+                source: 'rule',
+                rationale: ruleIntent.signal || '',
+            };
+        }
+
+        if (modelKind) {
+            return {
+                kind: modelKind,
+                confidence: modelConfidence || 0.5,
+                source: 'model',
+                rationale: toShortText(modelIntent?.rationale || modelIntent?.reason || '', 160),
+            };
+        }
+
+        return {
+            kind: INTENT_LABELS.neutral,
+            confidence: 0.2,
+            source: 'fallback',
+            rationale: '',
+        };
+    }
+
+    function parseAdvanceFlag(rawValue) {
+        if (typeof rawValue === 'boolean') return rawValue;
+        if (Number.isFinite(rawValue)) return Number(rawValue) > 0;
+
+        const text = String(rawValue || '').trim();
+        if (!text) return null;
+        const lower = text.toLowerCase();
+
+        if (['true', '1', 'yes', 'y', 'switch', 'advance'].includes(lower)) return true;
+        if (['false', '0', 'no', 'n', 'stay', 'hold'].includes(lower)) return false;
+        if (/推进|前进|切换|下一步|继续|转场/.test(text)) return true;
+        if (/停留|保持|不推进|先别|等等|不要推进/.test(text)) return false;
+
+        return null;
+    }
+
     function buildDirectorPrompt({ chapterTitle, chapterOutline, currentBeatIdx, beats, latestDialogue }) {
         const compactBeats = beats.map((beat, idx) => ({
             idx,
@@ -166,7 +530,7 @@ export function createDirectorService(deps = {}) {
             tags: beat.tags,
         }));
 
-        return `${getLanguagePrefix ? getLanguagePrefix() : ''}你是互动小说的导演裁判。请先判断当前处于本章哪个轻节拍阶段，再给出下一步宽松引导。\n\n规则：\n1) 输出必须是JSON，不要代码块，不要解释。\n2) 先定位阶段：stage_idx 应尽量贴近当前对话。\n3) should_advance 仅在当前节拍明显完成时为 true。\n4) next_hint 只给下一步短引导，不能剧透后续大事件。\n5) spoiler_hold 写本回合防剧透边界（简短一句）。\n6) tone_hint 可为空。\n7) confidence 为0-1数字。\n\n章节：${chapterTitle}\n本章摘要：${chapterOutline}\n当前阶段索引：${currentBeatIdx}\n\n轻节拍列表：\n${JSON.stringify(compactBeats, null, 2)}\n\n最近对话：\n${latestDialogue}\n\n输出JSON格式：\n{\n  "stage_idx": 0,\n  "should_advance": false,\n  "next_hint": "...",\n  "spoiler_hold": "...",\n  "tone_hint": "...",\n  "confidence": 0.75\n}`;
+        return `${getLanguagePrefix ? getLanguagePrefix() : ''}你是互动小说的导演裁判。请先判断当前处于本章哪个轻节拍阶段，再给出下一步宽松引导。\n\n规则：\n1) 输出必须是JSON，不要代码块，不要解释。\n2) 先定位阶段：stage_idx 应尽量贴近当前对话。\n3) should_advance 仅在当前节拍明显完成时为 true。\n4) next_hint 只给下一步短引导，不能剧透后续大事件。\n5) spoiler_hold 写本回合防剧透边界（简短一句）。\n6) tone_hint 可为空。\n7) confidence 为0-1数字。\n8) 先识别用户意图，写入 user_intent 与 intent_confidence、intent_rationale。\n\n允许的 user_intent 标签：advance, stay, neutral, switch_scene, skip, investigate, search, explore, travel, dialogue, negotiate, reflect, plan, rest, stealth, combat, summarize, clarify, request_hint, meta。\n\n章节：${chapterTitle}\n本章摘要：${chapterOutline}\n当前阶段索引：${currentBeatIdx}\n\n轻节拍列表：\n${JSON.stringify(compactBeats, null, 2)}\n\n最近对话：\n${latestDialogue}\n\n输出JSON格式：\n{\n  "stage_idx": 0,\n  "should_advance": false,\n  "user_intent": "advance",\n  "intent_confidence": 0.75,\n  "intent_rationale": "...",\n  "next_hint": "...",\n  "spoiler_hold": "...",\n  "tone_hint": "...",\n  "confidence": 0.75\n}`;
     }
 
     function normalizeDecision(rawDecision, currentBeatIdx, beats) {
@@ -178,8 +542,19 @@ export function createDirectorService(deps = {}) {
                 : currentBeatIdx;
 
         let stageIdx = Math.max(0, Math.min(maxIdx, parsedIdx));
-        const shouldAdvance = rawDecision?.should_advance === true
-            || String(rawDecision?.should_advance || '').toLowerCase() === 'true';
+        let shouldAdvance = parseAdvanceFlag(rawDecision?.should_advance);
+        if (shouldAdvance === null) {
+            shouldAdvance = parseAdvanceFlag(rawDecision?.navigation_decision);
+        }
+
+        const currentBeatFromDecision = Number(rawDecision?.current_beat_idx);
+        if (shouldAdvance === null && Number.isFinite(currentBeatFromDecision)) {
+            shouldAdvance = currentBeatFromDecision > currentBeatIdx;
+        }
+
+        if (shouldAdvance === null) {
+            shouldAdvance = stageIdx > currentBeatIdx;
+        }
 
         if (shouldAdvance && stageIdx <= currentBeatIdx && currentBeatIdx < maxIdx) {
             stageIdx = currentBeatIdx + 1;
@@ -190,14 +565,89 @@ export function createDirectorService(deps = {}) {
             ? Math.max(0, Math.min(1, confidenceNum))
             : 0.55;
 
+        const intentConfidenceNum = Number(rawDecision?.intent_confidence);
+        const intentConfidence = Number.isFinite(intentConfidenceNum)
+            ? Math.max(0, Math.min(1, intentConfidenceNum))
+            : 0;
+
+        const userIntent = normalizeIntentLabel(rawDecision?.user_intent);
+
         return {
             stage_idx: stageIdx,
-            should_advance: shouldAdvance,
+            should_advance: shouldAdvance === true,
+            user_intent: userIntent,
+            intent_confidence: intentConfidence,
+            intent_rationale: toShortText(rawDecision?.intent_rationale || rawDecision?.intent_reason || '', 160),
             next_hint: toShortText(rawDecision?.next_hint || '', 180),
             spoiler_hold: toShortText(rawDecision?.spoiler_hold || '', 160),
             tone_hint: toShortText(rawDecision?.tone_hint || '', 160),
             confidence,
         };
+    }
+
+    function buildFallbackDecision(currentBeatIdx, beats, reason = 'fallback') {
+        const safeIdx = Math.max(0, Math.min(currentBeatIdx, Math.max(0, beats.length - 1)));
+        const nextBeat = beats[safeIdx + 1] || null;
+        return {
+            stage_idx: safeIdx,
+            should_advance: false,
+            user_intent: '',
+            intent_confidence: 0,
+            intent_rationale: '',
+            next_hint: toShortText(nextBeat?.summary || '', 140) || '继续围绕当前阶段互动推进。',
+            spoiler_hold: '不要提前描写后续关键转折或结局。',
+            tone_hint: '',
+            confidence: 0.4,
+            reason,
+        };
+    }
+
+    function applyUserIntentToDecision(decision, userIntent, currentBeatIdx, beats) {
+        const maxIdx = Math.max(0, beats.length - 1);
+        const nextDecision = {
+            ...decision,
+            stage_idx: Number.isInteger(decision?.stage_idx)
+                ? Math.max(0, Math.min(maxIdx, decision.stage_idx))
+                : currentBeatIdx,
+            should_advance: decision?.should_advance === true,
+        };
+
+        const intentKind = userIntent?.kind || INTENT_LABELS.neutral;
+
+        if ([INTENT_LABELS.stay, INTENT_LABELS.dialogue, INTENT_LABELS.negotiate, INTENT_LABELS.reflect, INTENT_LABELS.plan, INTENT_LABELS.rest, INTENT_LABELS.stealth, INTENT_LABELS.summarize, INTENT_LABELS.clarify, INTENT_LABELS.request_hint, INTENT_LABELS.meta].includes(intentKind)) {
+            nextDecision.stage_idx = currentBeatIdx;
+            nextDecision.should_advance = false;
+            return nextDecision;
+        }
+
+        if ([INTENT_LABELS.advance, INTENT_LABELS.investigate, INTENT_LABELS.search, INTENT_LABELS.explore, INTENT_LABELS.travel, INTENT_LABELS.switch_scene, INTENT_LABELS.skip, INTENT_LABELS.combat].includes(intentKind)) {
+            if (currentBeatIdx < maxIdx) {
+                if (nextDecision.stage_idx <= currentBeatIdx) {
+                    nextDecision.stage_idx = currentBeatIdx + 1;
+                }
+                nextDecision.should_advance = true;
+            } else {
+                nextDecision.stage_idx = maxIdx;
+                nextDecision.should_advance = false;
+            }
+        }
+
+        return nextDecision;
+    }
+
+    function stripExistingDirectorInjection(chat) {
+        if (!Array.isArray(chat)) return;
+        for (let i = chat.length - 1; i >= 0; i--) {
+            const item = chat[i];
+            if (item?.is_storyweaver_director === true) {
+                chat.splice(i, 1);
+                continue;
+            }
+            const itemContent = String(item?.content || item?.mes || '');
+            if (itemContent.includes('# StoryWeaver 导演提示（宽松模式）')) {
+                chat.splice(i, 1);
+            }
+        }
     }
 
     function buildInjection(decision, beats) {
@@ -257,6 +707,10 @@ export function createDirectorService(deps = {}) {
         memory.chapterCurrentBeatIndex = currentBeatIdx;
         directorDebug(`start chapter=${chapterIndex + 1}, beat=${currentBeatIdx + 1}/${beats.length}`);
 
+        const latestUserMessage = getLatestUserMessage(eventData);
+        const ruleIntent = detectUserIntent(latestUserMessage);
+        directorDebug(`intent-rule=${ruleIntent.kind}${ruleIntent.signal ? ` (${ruleIntent.signal})` : ''}`);
+
         const prompt = buildDirectorPrompt({
             chapterTitle: memory.chapterTitle || `第${chapterIndex + 1}章`,
             chapterOutline: toShortText(memory.chapterOutline || '', 140),
@@ -266,25 +720,50 @@ export function createDirectorService(deps = {}) {
         });
 
         let decision = null;
+        let decisionSource = 'model';
         try {
             const response = await callDirectorAPI(prompt, chapterIndex + 1);
             const parsed = extractJsonObject(response);
             if (!parsed) {
-                directorWarn('导演返回内容无法解析为JSON，已跳过本回合判定', toShortText(response, 220));
-                return null;
+                directorWarn('导演返回内容无法解析为JSON，已使用回退判定', toShortText(response, 220));
+                decision = buildFallbackDecision(currentBeatIdx, beats, 'parse-fallback');
+                decisionSource = 'fallback-parse';
+            } else {
+                decision = normalizeDecision(parsed, currentBeatIdx, beats);
             }
-            decision = normalizeDecision(parsed, currentBeatIdx, beats);
-            directorInfo(`判定完成 stage=${decision.stage_idx}, advance=${decision.should_advance}, confidence=${decision.confidence}`);
         } catch (error) {
-            directorWarn('导演判定失败', error?.message || String(error));
-            return null;
+            directorWarn('导演判定失败，已使用回退判定', error?.message || String(error));
+            decision = buildFallbackDecision(currentBeatIdx, beats, 'error-fallback');
+            decisionSource = 'fallback-error';
         }
 
+        const resolvedIntent = resolveUserIntent({
+            modelIntent: {
+                kind: decision?.user_intent,
+                confidence: decision?.intent_confidence,
+                rationale: decision?.intent_rationale,
+            },
+            ruleIntent,
+        });
+
+        decision.user_intent = resolvedIntent.kind;
+        decision.intent_confidence = resolvedIntent.confidence;
+        decision.intent_source = resolvedIntent.source;
+        decision.intent_rationale = resolvedIntent.rationale;
+
+        decision = applyUserIntentToDecision(decision, resolvedIntent, currentBeatIdx, beats);
+
         if (decision.confidence < 0.45) {
-            directorDebug(`low-confidence fallback applied: ${decision.confidence}`);
-            decision.stage_idx = currentBeatIdx;
-            decision.should_advance = false;
+            if (resolvedIntent.kind === INTENT_LABELS.advance && currentBeatIdx < beats.length - 1) {
+                directorDebug(`low-confidence=${decision.confidence}, keep advance due to user intent`);
+            } else {
+                directorDebug(`low-confidence fallback applied: ${decision.confidence}`);
+                decision.stage_idx = currentBeatIdx;
+                decision.should_advance = false;
+            }
         }
+
+        directorInfo(`判定完成 source=${decisionSource}, stage=${decision.stage_idx}, advance=${decision.should_advance}, confidence=${decision.confidence}, intent=${resolvedIntent.kind}, intentSource=${resolvedIntent.source}, intentConf=${resolvedIntent.confidence}`);
 
         memory.chapterCurrentBeatIndex = decision.stage_idx;
         memory.directorDecision = {
@@ -296,17 +775,7 @@ export function createDirectorService(deps = {}) {
         AppState.experience.directorLastDecisionAt = Date.now();
 
         const injection = buildInjection(decision, beats);
-        for (let i = eventData.chat.length - 1; i >= 0; i--) {
-            const item = eventData.chat[i];
-            if (item?.is_storyweaver_director === true) {
-                eventData.chat.splice(i, 1);
-                continue;
-            }
-            const itemContent = String(item?.content || item?.mes || '');
-            if (itemContent.includes('# StoryWeaver 导演提示（宽松模式）')) {
-                eventData.chat.splice(i, 1);
-            }
-        }
+        stripExistingDirectorInjection(eventData.chat);
         eventData.chat.unshift({
             role: 'system',
             content: injection,

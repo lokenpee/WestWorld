@@ -183,6 +183,58 @@
         };
     }
 
+    function splitBeatCandidates(text, limit = 8) {
+        return String(text || '')
+            .split(/[，,。；;、\n]/)
+            .map((part) => String(part || '').trim())
+            .filter(Boolean)
+            .slice(0, limit);
+    }
+
+    function ensureMinimumBeats(beats, outline, fallbackNodes = []) {
+        const normalized = Array.isArray(beats)
+            ? beats.map((beat, idx) => normalizeBeatItem(beat, idx)).slice(0, 8)
+            : [];
+        const minCount = 3;
+        if (normalized.length >= minCount) {
+            return normalized;
+        }
+
+        const seen = new Set(normalized.map((beat) => beat.summary));
+        const candidates = [
+            ...fallbackNodes,
+            ...splitBeatCandidates(outline, 8),
+        ];
+
+        for (const candidate of candidates) {
+            if (normalized.length >= minCount) break;
+            const summary = String(candidate || '').trim();
+            if (!summary || seen.has(summary)) continue;
+            normalized.push(normalizeBeatItem({
+                summary,
+                exitCondition: '出现明显推进动作或关键信息变化',
+            }, normalized.length, summary));
+            seen.add(summary);
+        }
+
+        const genericFallback = [
+            '围绕当前线索继续探索并确认方向',
+            '通过互动获得新的关键信息反馈',
+            '形成阶段性判断后推进下一步行动',
+        ];
+        for (const fallback of genericFallback) {
+            if (normalized.length >= minCount) break;
+            if (seen.has(fallback)) continue;
+            normalized.push(normalizeBeatItem({
+                summary: fallback,
+                exitCondition: '出现明确行动决策或关键信息更新',
+            }, normalized.length, fallback));
+            seen.add(fallback);
+        }
+
+        return normalized.slice(0, 8).map((beat, idx) => normalizeBeatItem(beat, idx));
+    }
+
     function extractJsonObject(text) {
         const raw = String(text || '').trim();
         if (!raw) return null;
@@ -246,13 +298,15 @@
             ? rawBeats.map((beat, idx) => normalizeBeatItem(beat, idx)).slice(0, 8)
             : fallbackNodes.map((node, idx) => normalizeBeatItem({ summary: node }, idx, node));
 
+        const stabilizedBeats = ensureMinimumBeats(beats, outline, fallbackNodes);
+
         return {
             goal,
             flow,
             keyNodes: keyNodes.length > 0
                 ? keyNodes
                 : fallbackNodes.slice(0, 3),
-            beats,
+            beats: stabilizedBeats,
         };
     }
 

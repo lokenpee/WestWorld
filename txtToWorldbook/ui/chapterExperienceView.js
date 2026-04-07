@@ -76,6 +76,26 @@ export function createChapterExperienceView(deps = {}) {
         delete el.dataset.swPrevResultDisplay;
     }
 
+    function setResultCoreVisible(show) {
+        const resultSection = document.getElementById('ttw-result-section');
+        if (!resultSection) return;
+
+        const coreNodes = [
+            resultSection.querySelector('.ttw-section-header'),
+            document.getElementById('ttw-result-preview'),
+            resultSection.querySelector('.ttw-result-actions'),
+        ];
+
+        coreNodes.forEach((node) => {
+            if (!node) return;
+            if (show) {
+                restoreFromHide(node);
+            } else {
+                hideWithRestore(node);
+            }
+        });
+    }
+
     function setModeTabActive(mode) {
         const tabMap = {
             txt: selectors.txtModeButton,
@@ -115,6 +135,7 @@ export function createChapterExperienceView(deps = {}) {
             if (typeof showResultSection === 'function') {
                 showResultSection(true);
             }
+            setResultCoreVisible(true);
             return;
         }
 
@@ -124,6 +145,7 @@ export function createChapterExperienceView(deps = {}) {
                 showResultSection(true);
             }
             forceShowWithRestore(resultSection);
+            setResultCoreVisible(false);
             return;
         }
 
@@ -131,6 +153,7 @@ export function createChapterExperienceView(deps = {}) {
         if (typeof showResultSection === 'function') {
             showResultSection(false);
         }
+        setResultCoreVisible(false);
         forceHideResultWithRestore(resultSection);
     }
 
