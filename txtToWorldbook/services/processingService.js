@@ -205,6 +205,9 @@
         if (status >= 400 && status < 500) return false;
 
         const message = String(error?.message || '').toLowerCase();
+        if (message.includes('json解析失败') || message.includes('json修复失败')) {
+            return true;
+        }
         return (
             message.includes('timeout') ||
             message.includes('超时') ||
@@ -224,7 +227,10 @@
 
     function compactErrorMessage(error) {
         const raw = String(error?.message || error || '未知错误');
-        const singleLine = raw.replace(/\s+/g, ' ').trim();
+        const singleLine = raw
+            .replace(/^\[第\d+章\]\s*/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
         if (!singleLine) return '未知错误';
         return singleLine.length > 180 ? `${singleLine.slice(0, 180)}...` : singleLine;
     }
@@ -726,7 +732,7 @@
                 if (isTokenLimitError(response)) throw new Error('Token limit exceeded');
 
                 debugLog(`[第${chapterIndex}章][主API] 解析AI响应...`);
-                let memoryUpdate = parseAIResponse(response);
+                let memoryUpdate = parseAIResponse(response, { strict: false });
 
                 debugLog(`[第${chapterIndex}章][主API] 后处理章节索引...`);
                 memoryUpdate = postProcessResultWithChapterIndex(memoryUpdate, chapterIndex);
@@ -972,7 +978,7 @@ ${'='.repeat(50)}
             }
 
             debugLog(`[串行][第${chapterIndex}章] 解析AI响应...`);
-            let memoryUpdate = parseAIResponse(response);
+            let memoryUpdate = parseAIResponse(response, { strict: false });
             memoryUpdate = postProcessResultWithChapterIndex(memoryUpdate, chapterIndex);
 
             debugLog(`[串行][第${chapterIndex}章] 合并世界书...`);
