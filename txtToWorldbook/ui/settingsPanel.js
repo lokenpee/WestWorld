@@ -210,7 +210,6 @@ export function buildSettingsHtml() {
             <span class="ttw-collapse-icon">▼</span>
         </div>
         <div class="ttw-section-content" id="ttw-settings-content">
-            ${buildPluginUpdateHtml()}
             <div class="ttw-setting-card ttw-setting-card-green">
                 <label class="ttw-checkbox-label">
                     <input type="checkbox" id="ttw-use-tavern-api" checked>
@@ -540,6 +539,7 @@ function buildModalBodyHtml() {
     return `
     <div class="ttw-modal-body">
         ${buildViewNavHtml()}
+        ${buildPluginUpdateHtml()}
         ${buildFileUploadSectionHtml()}
         ${buildSettingsHtml()}
         ${buildDefaultEntriesSectionHtml()}
