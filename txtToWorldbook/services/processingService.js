@@ -435,30 +435,104 @@
         const raw = String(text || '').trim();
         if (!raw) return null;
 
+        const maybeParseJson = (candidate) => {
+            const body = String(candidate || '').trim();
+            if (!body) return null;
+            const variants = [
+                body,
+                body.replace(/^\uFEFF/, ''),
+                body.replace(/,\s*([}\]])/g, '$1'),
+            ];
+
+            for (const item of variants) {
+                try {
+                    const parsed = JSON.parse(item);
+                    if (parsed && typeof parsed === 'object') return parsed;
+                } catch (_) {
+                    // continue
+                }
+            }
+            return null;
+        };
+
+        const collectBalancedObjects = (source, limit = 16) => {
+            const s = String(source || '');
+            const out = [];
+            let depth = 0;
+            let start = -1;
+            let inString = false;
+            let escaped = false;
+
+            for (let i = 0; i < s.length; i++) {
+                const ch = s[i];
+                if (inString) {
+                    if (escaped) {
+                        escaped = false;
+                        continue;
+                    }
+                    if (ch === '\\') {
+                        escaped = true;
+                        continue;
+                    }
+                    if (ch === '"') {
+                        inString = false;
+                    }
+                    continue;
+                }
+
+                if (ch === '"') {
+                    inString = true;
+                    continue;
+                }
+
+                if (ch === '{') {
+                    if (depth === 0) start = i;
+                    depth++;
+                    continue;
+                }
+
+                if (ch === '}') {
+                    if (depth > 0) depth--;
+                    if (depth === 0 && start >= 0) {
+                        out.push(s.slice(start, i + 1));
+                        start = -1;
+                        if (out.length >= limit) break;
+                    }
+                }
+            }
+
+            return out;
+        };
+
         const fenceCleaned = raw
             .replace(/^```json\s*/i, '')
             .replace(/^```\s*/i, '')
             .replace(/\s*```$/i, '')
             .trim();
 
-        try {
-            const parsed = JSON.parse(fenceCleaned);
-            if (parsed && typeof parsed === 'object') return parsed;
-        } catch (_) {
-            // ignore and try fallback
+        const direct = maybeParseJson(fenceCleaned);
+        if (direct) return direct;
+
+        const fencedBlocks = [];
+        const fenceRegex = /```(?:json)?\s*([\s\S]*?)```/ig;
+        let match;
+        while ((match = fenceRegex.exec(raw)) !== null) {
+            fencedBlocks.push(String(match[1] || '').trim());
+            if (fencedBlocks.length >= 4) break;
         }
 
-        const start = fenceCleaned.indexOf('{');
-        const end = fenceCleaned.lastIndexOf('}');
-        if (start !== -1 && end > start) {
-            const candidate = fenceCleaned.slice(start, end + 1);
-            try {
-                const parsed = JSON.parse(candidate);
-                if (parsed && typeof parsed === 'object') return parsed;
-            } catch (_) {
-                return null;
-            }
+        for (const block of fencedBlocks) {
+            const parsed = maybeParseJson(block);
+            if (parsed) return parsed;
         }
+
+        const objectCandidates = collectBalancedObjects(fenceCleaned)
+            .sort((a, b) => b.length - a.length);
+        for (const candidate of objectCandidates) {
+            const parsed = maybeParseJson(candidate);
+            if (parsed) return parsed;
+        }
+
         return null;
     }
 
@@ -1011,6 +1085,7 @@
         const fallbackOutline = toShortOutline(memory.content, 140) || `${memory.chapterTitle || `第${index + 1}章`}剧情推进。`;
         const parsed = extractJsonObject(response);
         const rawLength = String(response || '').length;
+        const rawPreview = String(response || '').replace(/\s+/g, ' ').slice(0, 180);
 
         if (!parsed) {
             const plain = toShortOutline(response, 140) || fallbackOutline;
@@ -1021,6 +1096,7 @@
                     meta: {
                         ...localFallback.meta,
                         fallbackReason: 'non-json',
+                        rawPreview,
                         rawLength,
                     },
                 };
@@ -1031,6 +1107,7 @@
                 meta: {
                     parsed: false,
                     fallbackReason: 'non-json',
+                    rawPreview,
                     rawLength,
                 },
             };
@@ -1072,6 +1149,7 @@
                     meta: {
                         ...localFallback.meta,
                         fallbackReason: 'strategy-invalid',
+                        rawPreview,
                         rawLength,
                     },
                 };
@@ -1153,9 +1231,9 @@
                     if (assets?.meta?.fallback === 'local-split') {
                         const reason = String(assets?.meta?.fallbackReason || 'non-json');
                         if (reason === 'strategy-invalid') {
-                            updateStreamContent(`⚠️ [第${index + 1}章][导演API] 切分策略不可用（长度=${assets?.meta?.rawLength || 0}），已启用本地切分兜底\n`);
+                            updateStreamContent(`⚠️ [第${index + 1}章][导演API] 切分策略不可用（长度=${assets?.meta?.rawLength || 0}，预览=${assets?.meta?.rawPreview || '无'}），已启用本地切分兜底\n`);
                         } else {
-                            updateStreamContent(`⚠️ [第${index + 1}章][导演API] 响应非JSON（长度=${assets?.meta?.rawLength || 0}），已启用本地切分兜底\n`);
+                            updateStreamContent(`⚠️ [第${index + 1}章][导演API] 响应非JSON（长度=${assets?.meta?.rawLength || 0}，预览=${assets?.meta?.rawPreview || '无'}），已启用本地切分兜底\n`);
                         }
                     } else {
                         throw createChapterAssetsValidationError(

@@ -114,7 +114,8 @@ export function createApiService(deps = {}) {
         }
     }
 
-    function buildCustomApiRequest(messages, target = 'main') {
+    function buildCustomApiRequest(messages, target = 'main', options = {}) {
+        const { disableDirectorJsonMode = false } = options;
         const config = getApiConfig(target);
         const provider = config.provider;
         const apiKey = config.apiKey;
@@ -183,6 +184,7 @@ export function createApiService(deps = {}) {
             case 'openai-compatible': {
                 let openaiEndpoint = endpoint || 'http://127.0.0.1:5000/v1/chat/completions';
                 const openaiModel = model || 'local-model';
+                const isDirectorTarget = target === 'director';
 
                 if (!openaiEndpoint.includes('/chat/completions')) {
                     if (openaiEndpoint.endsWith('/v1')) {
@@ -202,16 +204,23 @@ export function createApiService(deps = {}) {
                 }
 
                 requestUrl = openaiEndpoint;
+                const openaiBody = {
+                    model: openaiModel,
+                    messages: openaiMessages,
+                    temperature: isDirectorTarget ? 0.1 : 0.3,
+                    max_tokens: customApiMaxTokens,
+                    stream: true,
+                };
+
+                // Ask director endpoint for strict JSON when supported to reduce free-form prose responses.
+                if (isDirectorTarget && !disableDirectorJsonMode) {
+                    openaiBody.response_format = { type: 'json_object' };
+                }
+
                 requestOptions = {
                     method: 'POST',
                     headers,
-                    body: JSON.stringify({
-                        model: openaiModel,
-                        messages: openaiMessages,
-                        temperature: 0.3,
-                        max_tokens: customApiMaxTokens,
-                        stream: true,
-                    }),
+                    body: JSON.stringify(openaiBody),
                 };
                 isStreamRequest = true;
                 break;
@@ -237,8 +246,17 @@ export function createApiService(deps = {}) {
     async function callCustomAPI(messages, target = 'main', taskId = null) {
         const maxRetries = 3;
         const baseTimeout = AppState.settings.apiTimeout || 120000;
+        const parseTimeout = (value, fallback) => {
+            const parsed = parseInt(value, 10);
+            if (!Number.isFinite(parsed)) return fallback;
+            return Math.max(3000, Math.min(120000, parsed));
+        };
+        const directorTimeoutCap = parseTimeout(
+            AppState.settings?.directorApi?.timeout ?? AppState.settings?.directorApiTimeout,
+            20000
+        );
         const timeout = target === 'director'
-            ? Math.min(baseTimeout, 8000)
+            ? Math.min(baseTimeout, directorTimeoutCap)
             : baseTimeout;
         const requestConfig = buildCustomApiRequest(messages, target);
         const combinedPrompt = messagesToString(messages);
@@ -247,6 +265,19 @@ export function createApiService(deps = {}) {
         updateStreamContent(`\n📤 ${logPrefix} 发送请求 (${requestConfig.provider}, ${messages.length}条消息)...\n`);
         debugLog(`${logPrefix} 开始调用, provider=${requestConfig.provider}, model=${requestConfig.model}, 消息数=${messages.length}, 总长度=${combinedPrompt.length}`);
 
+        const isUnsupportedDirectorJsonModeError = (error) => {
+            if (target !== 'director' || requestConfig.provider !== 'openai-compatible') return false;
+            const status = Number(error?.status || 0);
+            if (status !== 400 && status !== 422) return false;
+            const text = String(error?.responseText || error?.message || '').toLowerCase();
+            return text.includes('response_format')
+                || text.includes('json_object')
+                || text.includes('json schema')
+                || text.includes('unsupported')
+                || text.includes('invalid')
+                || text.includes('unknown field');
+        };
+
         try {
             return await APICaller.withRetry(async (attempt) => {
                 const attemptNo = attempt + 1;
@@ -254,11 +285,25 @@ export function createApiService(deps = {}) {
                 debugLog(`${logPrefix} 请求目标: ${requestConfig.requestUrl.substring(0, 80)}..., 尝试=${attemptNo}`);
 
                 if (requestConfig.isStreamRequest) {
-                    const result = await APICaller.requestStream(requestConfig.requestUrl, {
-                        ...requestConfig.requestOptions,
+                    const tryStreamRequest = async (config) => APICaller.requestStream(config.requestUrl, {
+                        ...config.requestOptions,
                         timeout,
                         inactivityTimeout: Math.min(timeout, 120000),
                     });
+
+                    let result;
+                    try {
+                        result = await tryStreamRequest(requestConfig);
+                    } catch (error) {
+                        if (isUnsupportedDirectorJsonModeError(error)) {
+                            updateStreamContent(`ℹ️ ${logPrefix} 当前端点不支持 response_format，已自动降级并重试本次请求\n`);
+                            const degradedConfig = buildCustomApiRequest(messages, target, { disableDirectorJsonMode: true });
+                            result = await tryStreamRequest(degradedConfig);
+                        } else {
+                            throw error;
+                        }
+                    }
+
                     debugLog(`${logPrefix} 流式读取完成, 结果长度=${result.length}字符`);
                     updateStreamContent(`📥 ${logPrefix} 收到流式响应 (${result.length}字符)\n`);
                     if (!String(result || '').trim()) {

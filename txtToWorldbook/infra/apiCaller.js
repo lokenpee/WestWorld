@@ -108,6 +108,43 @@ const APICaller = {
 			}, inactivityTimeout);
 		};
 
+		const extractTextFromSsePayload = (parsed) => {
+			const choice = parsed?.choices?.[0] || {};
+			const delta = choice?.delta || {};
+
+			const pickText = (value) => {
+				if (!value) return '';
+				if (typeof value === 'string') return value;
+				if (Array.isArray(value)) {
+					return value
+						.map((item) => {
+							if (typeof item === 'string') return item;
+							if (item && typeof item === 'object') {
+								if (typeof item.text === 'string') return item.text;
+								if (typeof item.content === 'string') return item.content;
+							}
+							return '';
+						})
+						.join('');
+				}
+				if (typeof value === 'object') {
+					if (typeof value.text === 'string') return value.text;
+					if (typeof value.content === 'string') return value.content;
+				}
+				return '';
+			};
+
+			return (
+				pickText(delta?.content)
+				|| pickText(delta?.text)
+				|| pickText(choice?.text)
+				|| pickText(choice?.message?.content)
+				|| pickText(parsed?.content)
+				|| pickText(parsed?.output_text)
+				|| ''
+			);
+		};
+
 		const consumeLine = (line) => {
 			const trimmed = line.trim();
 			if (!trimmed || trimmed.startsWith(':') || !trimmed.startsWith('data: ')) return;
@@ -115,7 +152,7 @@ const APICaller = {
 			if (dataStr === '[DONE]') return;
 			try {
 				const parsed = JSON.parse(dataStr);
-				const delta = parsed.choices?.[0]?.delta?.content || '';
+				const delta = extractTextFromSsePayload(parsed);
 				if (delta) {
 					fullContent += delta;
 					if (typeof onChunk === 'function') onChunk(delta, fullContent, parsed);
