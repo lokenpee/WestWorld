@@ -197,7 +197,11 @@
     }
 
     function shouldRetryError(error) {
-        if (error?.code === 'CHAPTER_ASSETS_VALIDATION') return true;
+        if (error?.code === 'CHAPTER_ASSETS_VALIDATION') {
+            const message = String(error?.message || '');
+            if (message.includes('不是有效JSON')) return false;
+            return true;
+        }
 
         const status = extractStatusCode(error);
         if (status === 429) return true;
@@ -502,6 +506,146 @@
         };
     }
 
+    function findNearbySplitPoint(text, target, maxOffset = 160) {
+        const source = String(text || '');
+        const len = source.length;
+        if (len === 0) return 0;
+        const clampedTarget = Math.max(1, Math.min(len - 1, target));
+        const isBoundary = (ch) => /[。！？!?；;\n]/.test(ch || '');
+
+        for (let offset = 0; offset <= maxOffset; offset++) {
+            const right = clampedTarget + offset;
+            if (right < len && isBoundary(source[right])) {
+                return right + 1;
+            }
+
+            const left = clampedTarget - offset;
+            if (left > 0 && isBoundary(source[left - 1])) {
+                return left;
+            }
+        }
+
+        return clampedTarget;
+    }
+
+    function trySplitContentWithBeatCount(content, beatCount) {
+        const source = String(content || '');
+        const totalLen = source.length;
+        const minLen = 200;
+        const maxLen = 1500;
+
+        if (beatCount < 3 || beatCount > 8) return null;
+        if (totalLen < beatCount * minLen) return null;
+        if (totalLen > beatCount * maxLen) return null;
+
+        const cuts = [0];
+        for (let i = 1; i < beatCount; i++) {
+            const remainingBeats = beatCount - i;
+            const prev = cuts[cuts.length - 1];
+            const minCut = prev + minLen;
+            const maxCut = totalLen - (remainingBeats * minLen);
+            if (minCut > maxCut) return null;
+
+            const ideal = Math.round((totalLen * i) / beatCount);
+            const target = Math.max(minCut, Math.min(maxCut, ideal));
+            let cut = findNearbySplitPoint(source, target, 180);
+            cut = Math.max(minCut, Math.min(maxCut, cut));
+
+            if ((cut - prev) > maxLen) {
+                cut = prev + maxLen;
+            }
+
+            cuts.push(cut);
+        }
+        cuts.push(totalLen);
+
+        const segments = [];
+        for (let i = 0; i < beatCount; i++) {
+            const seg = source.slice(cuts[i], cuts[i + 1]);
+            if (seg.length < minLen || seg.length > maxLen) {
+                return null;
+            }
+            segments.push(seg);
+        }
+
+        return segments;
+    }
+
+    function buildDeterministicBeatsFromChapterContent(content, chapterIndex = 1) {
+        const source = String(content || '');
+        const totalLen = source.length;
+        if (!source.trim()) return [];
+
+        const minBeatCount = 3;
+        const maxBeatCount = 8;
+        let guessCount = Math.ceil(totalLen / 1000);
+        guessCount = Math.max(minBeatCount, Math.min(maxBeatCount, guessCount));
+
+        const candidateCounts = [];
+        for (let delta = 0; delta <= 3; delta++) {
+            const up = guessCount + delta;
+            const down = guessCount - delta;
+            if (up >= minBeatCount && up <= maxBeatCount && !candidateCounts.includes(up)) candidateCounts.push(up);
+            if (down >= minBeatCount && down <= maxBeatCount && !candidateCounts.includes(down)) candidateCounts.push(down);
+        }
+
+        let segments = null;
+        for (const count of candidateCounts) {
+            segments = trySplitContentWithBeatCount(source, count);
+            if (segments) break;
+        }
+
+        if (!segments) {
+            return [];
+        }
+
+        const lastIdx = segments.length - 1;
+        return segments.map((seg, idx) => {
+            const summary = toShortOutline(seg, 36) || `第${chapterIndex}章节拍${idx + 1}`;
+            const tags = idx === 0 ? ['开场'] : (idx === lastIdx ? ['收束'] : ['推进']);
+            return normalizeBeatItem({
+                id: `b${idx + 1}`,
+                summary,
+                exitCondition: '该段核心行动完成，或出现新的互动焦点。',
+                tags,
+                original_text: seg,
+                split_rule: {
+                    primary: '动作闭环',
+                    matched: ['动作闭环'],
+                },
+            }, idx, summary);
+        });
+    }
+
+    function buildLocalChapterAssetsFallback(memory, index, outline = '') {
+        const chapterIndex = index + 1;
+        const fallbackOutline = toShortOutline(outline || memory?.content || '', 140)
+            || `${memory?.chapterTitle || `第${chapterIndex}章`}剧情推进。`;
+        const beats = buildDeterministicBeatsFromChapterContent(memory?.content || '', chapterIndex);
+        if (!Array.isArray(beats) || beats.length < 3) {
+            return null;
+        }
+
+        const keyNodes = beats
+            .map((beat) => String(beat.summary || '').trim())
+            .filter(Boolean)
+            .slice(0, 3);
+
+        return {
+            outline: fallbackOutline,
+            script: {
+                goal: '围绕本章核心冲突推进剧情并保持叙事连续。',
+                flow: fallbackOutline,
+                keyNodes,
+                beats,
+            },
+            meta: {
+                parsed: false,
+                fallback: 'local-split',
+            },
+        };
+    }
+
     function createChapterAssetsValidationError(index, message, detail = null) {
         const error = new Error(`[第${index + 1}章] 章节概览校验失败: ${message}`);
         error.code = 'CHAPTER_ASSETS_VALIDATION';
@@ -594,6 +738,16 @@
 
         if (!parsed) {
             const plain = toShortOutline(response, 140) || fallbackOutline;
+            const localFallback = buildLocalChapterAssetsFallback(memory, index, plain);
+            if (localFallback) {
+                return {
+                    ...localFallback,
+                    meta: {
+                        ...localFallback.meta,
+                        rawLength,
+                    },
+                };
+            }
             return {
                 outline: plain,
                 script: normalizeScript({}, plain),
@@ -667,10 +821,14 @@
                 throwIfRunInactive(runId);
                 const assets = parseChapterAssetsResponse(response, memory, index);
                 if (!assets?.meta?.parsed) {
-                    throw createChapterAssetsValidationError(
-                        index,
-                        `导演响应不是有效JSON，无法提取节拍原文（响应长度=${assets?.meta?.rawLength || 0}）`
-                    );
+                    if (assets?.meta?.fallback === 'local-split') {
+                        updateStreamContent(`⚠️ [第${index + 1}章][导演API] 响应非JSON（长度=${assets?.meta?.rawLength || 0}），已启用本地切分兜底\n`);
+                    } else {
+                        throw createChapterAssetsValidationError(
+                            index,
+                            `导演响应不是有效JSON，无法提取节拍原文（响应长度=${assets?.meta?.rawLength || 0}）`
+                        );
+                    }
                 }
                 const beatSummary = summarizeBeatOriginalText(assets?.script?.beats);
                 updateStreamContent(`🔎 [第${index + 1}章][导演API] 响应解析完成: beats=${beatSummary.count}, 空原文节拍=${beatSummary.emptyBeatIndices.length}${beatSummary.emptyBeatIndices.length ? `(${beatSummary.emptyBeatIndices.join(',')})` : ''}\n`);
@@ -696,6 +854,21 @@
                 lastError = error;
                 if (error?.message === 'ABORTED') {
                     throw error;
+                }
+                if (error?.code === 'CHAPTER_ASSETS_VALIDATION' && attempt >= maxRetries) {
+                    const localFallback = buildLocalChapterAssetsFallback(memory, index, memory.chapterOutline || memory.content || '');
+                    if (localFallback) {
+                        updateStreamContent(`⚠️ [第${index + 1}章][导演API] 校验多次失败，已切换本地切分兜底并继续流程\n`);
+                        validateChapterAssetsOrThrow(localFallback, memory, index);
+                        memory.chapterOutline = localFallback.outline;
+                        memory.chapterScript = localFallback.script;
+                        const beatCount = Array.isArray(memory.chapterScript?.beats) ? memory.chapterScript.beats.length : 0;
+                        memory.chapterCurrentBeatIndex = beatCount > 0 ? 0 : 0;
+                        memory.chapterOutlineStatus = 'done';
+                        memory.chapterOutlineError = '';
+                        updateMemoryQueueUI();
+                        return localFallback;
+                    }
                 }
                 if (error?.code === 'CHAPTER_ASSETS_VALIDATION' && error?.detail?.emptyBeatIndices?.length) {
                     updateStreamContent(`ℹ️ [第${index + 1}章][导演API] 校验诊断: 空原文节拍=${error.detail.emptyBeatIndices.join(',')}，请确认返回 JSON 中每个 beat 包含 original_text 且内容完整\n`);
@@ -1280,6 +1453,19 @@ ${'='.repeat(50)}
             updateStartButtonState(false);
 
         } catch (error) {
+            if (error?.message === 'ABORTED') {
+                const processedCount = AppState.memory.queue.filter(m => m.processed).length;
+                const progress = AppState.memory.queue.length > 0
+                    ? (processedCount / AppState.memory.queue.length) * 100
+                    : 0;
+                const tip = AppState.processing.isStopped ? '⏸️ 已暂停' : '⏹️ 本次任务已中断';
+                updateProgress(progress, tip);
+                updateStreamContent(`\nℹ️ ${tip}\n`);
+                if (currentStatus() !== 'stopped') transitionTo('idle');
+                updateStartButtonState(false);
+                return;
+            }
+
             ErrorHandler.handle(error, 'startAIProcessing');
             const brief = formatProcessingError(error, { task: '处理总流程' });
             updateProgress(0, `❌ 出错: ${compactErrorMessage(error)}`);
