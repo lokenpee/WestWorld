@@ -909,7 +909,7 @@ ${'='.repeat(50)}
         }
 
         if (index > 0) {
-            prompt += `\n\n上次阅读结尾：\n---\n${AppState.memory.queue[index - 1].content.slice(-500)}\n---\n`;
+            prompt += `\n\n上次阅读结尾：\n---\n${AppState.memory.queue[index - 1].content.slice(-200)}\n---\n`;
             const relevantContext = buildRelevantWorldbookContext(memory.content);
             if (relevantContext) {
                 prompt += relevantContext;
