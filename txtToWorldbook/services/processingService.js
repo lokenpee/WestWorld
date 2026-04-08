@@ -571,6 +571,282 @@
         return segments;
     }
 
+    function normalizeSplitType(type) {
+        const raw = String(type || '').trim();
+        const allowed = new Set([
+            'scene_switch',
+            'action_closed',
+            'dialogue_closed',
+            'plot_twist',
+            'perspective_switch',
+            'interaction_point',
+        ]);
+        if (allowed.has(raw)) return raw;
+        return 'action_closed';
+    }
+
+    function trySplitContentWithCutTargets(content, cutTargets) {
+        const source = String(content || '');
+        const totalLen = source.length;
+        const minLen = 200;
+        const maxLen = 1500;
+        const targets = Array.isArray(cutTargets)
+            ? cutTargets.map((t) => (Number.isFinite(t) ? Math.round(t) : null)).filter((t) => typeof t === 'number')
+            : [];
+
+        if (!source.trim()) return [];
+
+        // targets are cut positions between segments; we always enforce 3-8 beats.
+        const beatCount = targets.length + 1;
+        if (beatCount < 3 || beatCount > 8) return null;
+        if (totalLen < beatCount * minLen) return null;
+        if (totalLen > beatCount * maxLen) return null;
+
+        const cuts = [0];
+        for (let i = 0; i < targets.length; i++) {
+            const remainingBeats = beatCount - (i + 1);
+            const prev = cuts[cuts.length - 1];
+            const minCut = prev + minLen;
+            const maxCut = totalLen - (remainingBeats * minLen);
+            if (minCut > maxCut) return null;
+
+            const desired = Math.max(minCut, Math.min(maxCut, targets[i]));
+            let cut = findNearbySplitPoint(source, desired, 220);
+            cut = Math.max(minCut, Math.min(maxCut, cut));
+            if ((cut - prev) > maxLen) cut = prev + maxLen;
+            cuts.push(cut);
+        }
+        cuts.push(totalLen);
+
+        const segments = [];
+        for (let i = 0; i < beatCount; i++) {
+            const seg = source.slice(cuts[i], cuts[i + 1]);
+            if (seg.length < minLen || seg.length > maxLen) return null;
+            segments.push(seg);
+        }
+
+        return segments;
+    }
+
+    function buildBeatsFromSegments(segments, chapterIndex, splitPoints = []) {
+        const list = Array.isArray(segments) ? segments : [];
+        const points = Array.isArray(splitPoints) ? splitPoints : [];
+        const lastIdx = list.length - 1;
+        return list.map((seg, idx) => {
+            const summary = toShortOutline(seg, 36) || `第${chapterIndex}章节拍${idx + 1}`;
+            const tags = idx === 0 ? ['开场'] : (idx === lastIdx ? ['收束'] : ['推进']);
+            const splitType = normalizeSplitType(points[idx]?.type);
+            return normalizeBeatItem({
+                id: `b${idx + 1}`,
+                summary,
+                exitCondition: '该段核心行动完成，或出现新的互动焦点。',
+                tags,
+                original_text: seg,
+                split_rule: {
+                    primary: splitType,
+                    matched: [splitType],
+                },
+            }, idx, summary);
+        });
+    }
+
+    function normalizeForFuzzyMatch(text) {
+        return String(text || '')
+            .toLowerCase()
+            .replace(/[\s\u3000]+/g, '')
+            // drop common punctuation (keep CJK/latin/digits)
+            .replace(/[\u2000-\u206F\u2E00-\u2E7F'"`~!@#$%^&*()\-_=+\[\]{}\\|;:,.<>/?，。！？；：、“”‘’（）【】《》…—\n\r\t]+/g, '');
+    }
+
+    function buildNGramSet(text, n = 2) {
+        const s = normalizeForFuzzyMatch(text);
+        if (!s) return new Set();
+        const grams = new Set();
+        if (s.length < n) {
+            grams.add(s);
+            return grams;
+        }
+        for (let i = 0; i <= s.length - n; i++) {
+            grams.add(s.slice(i, i + n));
+        }
+        return grams;
+    }
+
+    function jaccardSimilarity(setA, setB) {
+        if (!setA.size && !setB.size) return 0;
+        if (!setA.size || !setB.size) return 0;
+        let inter = 0;
+        // iterate smaller set
+        const [small, big] = setA.size <= setB.size ? [setA, setB] : [setB, setA];
+        for (const v of small) {
+            if (big.has(v)) inter++;
+        }
+        const union = setA.size + setB.size - inter;
+        return union <= 0 ? 0 : inter / union;
+    }
+
+    function buildSentenceSpans(source) {
+        const text = String(source || '');
+        const spans = [];
+        if (!text.trim()) return spans;
+
+        const boundaries = new Set(['。', '！', '？', '；', '\n']);
+        let start = 0;
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (!boundaries.has(ch)) continue;
+
+            // include consecutive boundary chars/newlines
+            let end = i + 1;
+            while (end < text.length && (boundaries.has(text[end]) || text[end] === '\r')) {
+                end++;
+            }
+
+            const raw = text.slice(start, end);
+            const trimmed = raw.trim();
+            if (trimmed.length >= 6) {
+                spans.push({ start, end, text: trimmed });
+            }
+            start = end;
+            i = end - 1;
+        }
+
+        if (start < text.length) {
+            const tail = text.slice(start);
+            const trimmed = tail.trim();
+            if (trimmed.length >= 6) {
+                spans.push({ start, end: text.length, text: trimmed });
+            }
+        }
+
+        // If we failed to segment (e.g. no punctuation), make coarse spans.
+        if (!spans.length) {
+            const step = Math.max(120, Math.min(360, Math.round(text.length / 8)));
+            for (let s = 0; s < text.length; s += step) {
+                const e = Math.min(text.length, s + step);
+                const seg = text.slice(s, e).trim();
+                if (seg.length >= 6) spans.push({ start: s, end: e, text: seg });
+            }
+        }
+
+        return spans;
+    }
+
+    function findBestCutByHint(source, hint, expectedPos) {
+        const text = String(source || '');
+        const h = String(hint || '').trim();
+        if (!text.trim() || !h) return null;
+
+        // Fast path: direct substring match, but prefer a nearby occurrence.
+        const normalizedHint = normalizeForFuzzyMatch(h);
+        if (normalizedHint.length >= 4) {
+            const direct = text.indexOf(h);
+            if (direct > 0) {
+                return direct;
+            }
+        }
+
+        const spans = buildSentenceSpans(text);
+        if (!spans.length) return null;
+
+        const hintSet = buildNGramSet(h, 2);
+        const fallbackHintSet = hintSet.size ? hintSet : buildNGramSet(h, 1);
+
+        const center = Number.isFinite(expectedPos) ? Math.round(expectedPos) : Math.round(text.length / 2);
+        const window = 2600;
+        const left = Math.max(0, center - window);
+        const right = Math.min(text.length, center + window);
+
+        let best = null;
+        let bestScore = 0;
+
+        for (const span of spans) {
+            // Only consider spans near expected position.
+            if (span.end < left || span.start > right) continue;
+
+            const sentSet = buildNGramSet(span.text, 2);
+            const sentFallbackSet = sentSet.size ? sentSet : buildNGramSet(span.text, 1);
+            const sim = jaccardSimilarity(fallbackHintSet, sentFallbackSet);
+            if (sim <= 0) continue;
+
+            const cutPos = span.end;
+            const dist = Math.abs(cutPos - center);
+            const closeness = 1 - Math.min(1, dist / window);
+            const score = sim * 0.75 + closeness * 0.25;
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = cutPos;
+            }
+        }
+
+        // small threshold: avoid random matches
+        if (bestScore < 0.08) return null;
+        return best;
+    }
+
+    function applySplitStrategyToContent(content, strategy = {}, chapterIndex = 1) {
+        const source = String(content || '');
+        if (!source.trim()) return null;
+
+        let beatCount = Number(strategy?.beat_count);
+        if (!Number.isFinite(beatCount)) beatCount = 0;
+        beatCount = Math.max(3, Math.min(8, Math.round(beatCount || 0)));
+
+        const splitPoints = Array.isArray(strategy?.split_points) ? strategy.split_points : [];
+        const usablePoints = splitPoints.slice(0, Math.max(beatCount, 0));
+
+        // Second preference: use estimated per-beat chars if present.
+        const estimates = [];
+        for (let i = 0; i < beatCount; i++) {
+            const est = Number(usablePoints[i]?.estimated_chars);
+            estimates.push(Number.isFinite(est) && est > 0 ? Math.round(est) : null);
+        }
+
+        // Build rough targets first (by estimates or even split), then refine by fuzzy hint matching near the rough target.
+        const roughTargets = [];
+        if (estimates.some((e) => Number.isFinite(e))) {
+            let sum = 0;
+            for (let i = 0; i < beatCount - 1; i++) {
+                const step = Number.isFinite(estimates[i]) ? estimates[i] : Math.round(source.length / beatCount);
+                sum += step;
+                roughTargets.push(sum);
+            }
+        } else {
+            for (let i = 0; i < beatCount - 1; i++) {
+                roughTargets.push(Math.round((source.length * (i + 1)) / beatCount));
+            }
+        }
+
+        const cutTargets = [];
+        for (let i = 0; i < beatCount - 1; i++) {
+            const hint = String(usablePoints[i]?.hint || '').trim();
+            const expected = roughTargets[i];
+            const refined = hint ? findBestCutByHint(source, hint, expected) : null;
+            cutTargets.push(Number.isFinite(refined) ? refined : expected);
+        }
+
+        // Ensure targets are strictly increasing; if not, fall back to even splits.
+        for (let i = 1; i < cutTargets.length; i++) {
+            if (!(cutTargets[i] > cutTargets[i - 1])) {
+                cutTargets = [];
+                for (let k = 0; k < beatCount - 1; k++) {
+                    cutTargets.push(Math.round((source.length * (k + 1)) / beatCount));
+                }
+                break;
+            }
+        }
+
+        const segments = trySplitContentWithCutTargets(source, cutTargets)
+            || trySplitContentWithBeatCount(source, beatCount);
+
+        if (!segments) return null;
+        return {
+            segments,
+            splitPoints: usablePoints,
+        };
+    }
+
     function buildDeterministicBeatsFromChapterContent(content, chapterIndex = 1) {
         const source = String(content || '');
         const totalLen = source.length;
@@ -744,6 +1020,7 @@
                     ...localFallback,
                     meta: {
                         ...localFallback.meta,
+                        fallbackReason: 'non-json',
                         rawLength,
                     },
                 };
@@ -753,13 +1030,65 @@
                 script: normalizeScript({}, plain),
                 meta: {
                     parsed: false,
+                    fallbackReason: 'non-json',
                     rawLength,
                 },
             };
         }
 
+        // Backward-compat: if director still returns full assets with beats.original_text, accept it.
+        const parsedScriptCandidate = parsed.script || parsed.chapterScript || null;
+        if (parsedScriptCandidate && typeof parsedScriptCandidate === 'object' && Array.isArray(parsedScriptCandidate.beats)) {
+            const outline = toShortOutline(parsed.outline || parsed.summary || parsed.chapter_outline || '', 140) || fallbackOutline;
+            const script = normalizeScript(parsedScriptCandidate, outline);
+            const hasOriginal = Array.isArray(script?.beats)
+                && script.beats.every((b) => typeof b?.original_text === 'string' && b.original_text.trim());
+            if (hasOriginal) {
+                return {
+                    outline,
+                    script,
+                    meta: {
+                        parsed: true,
+                        rawLength,
+                    },
+                };
+            }
+        }
+
+        // Preferred: director returns split strategy only; we apply it locally to generate beats with exact original_text.
         const outline = toShortOutline(parsed.outline || parsed.summary || parsed.chapter_outline || '', 140) || fallbackOutline;
-        const script = normalizeScript(parsed.script || parsed.chapterScript || {}, outline);
+        const strategy = {
+            beat_count: parsed.beat_count ?? parsed.beatCount ?? parsed.split_strategy?.beat_count ?? 0,
+            split_points: parsed.split_points ?? parsed.splitPoints ?? parsed.split_strategy?.split_points ?? [],
+            key_nodes: parsed.key_nodes ?? parsed.keyNodes ?? parsed.split_strategy?.key_nodes ?? [],
+        };
+
+        const applied = applySplitStrategyToContent(memory.content || '', strategy, index + 1);
+        if (!applied) {
+            const localFallback = buildLocalChapterAssetsFallback(memory, index, outline);
+            if (localFallback) {
+                return {
+                    ...localFallback,
+                    meta: {
+                        ...localFallback.meta,
+                        fallbackReason: 'strategy-invalid',
+                        rawLength,
+                    },
+                };
+            }
+        }
+
+        const beats = buildBeatsFromSegments(applied?.segments || [], index + 1, applied?.splitPoints || []);
+        const keyNodes = Array.isArray(strategy.key_nodes)
+            ? strategy.key_nodes.map((x) => String(x || '').trim()).filter(Boolean).slice(0, 3)
+            : [];
+        const script = normalizeScript({
+            goal: '围绕本章核心冲突推进剧情并保持叙事连续。',
+            flow: outline,
+            keyNodes,
+            beats,
+        }, outline);
+
         return {
             outline,
             script,
@@ -776,7 +1105,7 @@
         const previousMemory = index > 0 ? AppState.memory.queue[index - 1] : null;
         const previousOutline = previousMemory?.chapterOutline ? `\n上一章摘要：${previousMemory.chapterOutline}` : '';
 
-        return `${getLanguagePrefix()}你是“章节拆分助手”。你的任务只有一个：把下面这章正文，拆成 3-8 个连续剧情段，并输出摘要 + 结构化JSON。\n\n先理解术语（人话定义）：\n1) 节拍（beat）：一段连续剧情单元，可以理解成“一个小剧情段/一个镜头段”。\n2) original_text：这个节拍在正文里对应的原文片段，必须原样复制，不能改写。\n3) split_rule.primary：这个节拍最主要的切分理由。\n4) split_rule.matched：本节拍命中的所有切分理由数组，必须包含 primary。\n\n六种切分理由（都用人话）：\n- 动作闭环：一个动作链条有了阶段性完成（例如“发现线索 -> 追踪 -> 暂时停下”）。\n- 场景切换：地点或环境发生明确变化。\n- 对话闭环：一轮关键问答/谈判完成并进入新焦点。\n- 剧情转折：目标、关系、风险、结论发生明显变化。\n- 视角切换：叙事主视角或关注对象明显切换。\n- 互动切口：出现明确“等玩家决策/互动”的停顿点。\n\n工作步骤（按顺序执行）：\n1) 通读全文，先找可切点，再决定 3-8 个节拍。\n2) 把同一叙事目的的短碎片合并，避免切得太碎。\n3) 给每个节拍写 summary、exitCondition、tags。\n4) 给每个节拍填写 original_text（直接从正文拷贝，不改字）。\n5) 为每个节拍填写 split_rule.primary 和 split_rule.matched。\n6) 最后做“无损自检”：把所有 beats.original_text 按顺序拼接，必须与正文逐字完全一致。\n\n硬性约束（必须满足）：\n1) 只输出 JSON，不要代码块，不要解释。\n2) 必须包含 outline 与 script。\n3) outline 为 1-2 句中文摘要。\n4) script 包含 goal、flow、keyNodes(最多3条)、beats(3-8个)。\n5) 每个 beat 必须包含：id、summary、exitCondition、tags、original_text、split_rule。\n6) 每个 original_text 长度必须在 200-1500 字。\n7) beats.original_text 拼接后必须与正文完全一致（无重叠、无遗漏、无改写）。\n8) 当前节拍原文不要提前包含后续节拍的核心剧透信息。\n\n简易概念图：\n章节正文 -> 划分节拍 -> 每拍填写字段 -> 原文无损拼接自检 -> 输出JSON\n\n输出格式（严格照此结构）：\n{\n  "outline": "...",\n  "script": {\n    "goal": "...",\n    "flow": "...",\n    "keyNodes": ["...", "...", "..."],\n    "beats": [\n      {\n        "id": "b1",\n        "summary": "...",\n        "exitCondition": "...",\n        "tags": ["...", "..."],\n        "original_text": "该节拍对应原文（必须是正文原句片段）",\n        "split_rule": {\n          "primary": "剧情转折",\n          "matched": ["剧情转折", "互动切口"]\n        }\n      }\n    ]\n  }\n}\n\n章节标题：${chapterTitle}${previousOutline}\n\n章节正文：\n---\n${memory.content}\n---`;
+        return `${getLanguagePrefix()}你是“章节切分助手”。你的任务只有一个：读懂下面这章正文，然后给出“切分策略”（元数据），不要复制任何原文内容。\n\n重要说明（务必遵守）：\n1) 你输出的 JSON 里，禁止出现章节正文的原句/长段落（禁止粘贴原文）。\n2) 我们会在代码里按你的策略去切原文，因此你只需要提供：建议切几段 + 每段的切分理由 + 可读的剧情提示 + 大致长度预估。\n3) 只输出 JSON，不要代码块，不要解释。\n\n切分理由 type（6选1）：\n- scene_switch: 场景切换\n- action_closed: 动作闭环\n- dialogue_closed: 对话闭环\n- plot_twist: 剧情转折\n- perspective_switch: 视角切换\n- interaction_point: 互动切口\n\n输出 JSON 结构：\n{\n  "outline": "章节摘要（1-2句）",\n  "beat_count": 5,\n  "split_points": [\n    {\n      "type": "scene_switch",\n      "hint": "用人话描述该段发生了什么（不要引用原文句子）",\n      "estimated_chars": 900\n    }\n  ],\n  "key_nodes": ["要点1", "要点2", "要点3"]\n}\n\n规则：\n- beat_count 必须在 3-8 之间。\n- split_points 代表每个节拍的元信息：建议给出与 beat_count 相同数量的对象（不足也可以，但不要为空数组）。\n- estimated_chars 是你建议每段大约多少字（200-1500 之间更容易切得稳）。\n\n章节标题：${chapterTitle}${previousOutline}\n\n章节正文（仅供你分析，不要复制到输出里）：\n---\n${memory.content}\n---`;
     }
 
     async function generateChapterAssets(index, options = {}) {
@@ -822,7 +1151,12 @@
                 const assets = parseChapterAssetsResponse(response, memory, index);
                 if (!assets?.meta?.parsed) {
                     if (assets?.meta?.fallback === 'local-split') {
-                        updateStreamContent(`⚠️ [第${index + 1}章][导演API] 响应非JSON（长度=${assets?.meta?.rawLength || 0}），已启用本地切分兜底\n`);
+                        const reason = String(assets?.meta?.fallbackReason || 'non-json');
+                        if (reason === 'strategy-invalid') {
+                            updateStreamContent(`⚠️ [第${index + 1}章][导演API] 切分策略不可用（长度=${assets?.meta?.rawLength || 0}），已启用本地切分兜底\n`);
+                        } else {
+                            updateStreamContent(`⚠️ [第${index + 1}章][导演API] 响应非JSON（长度=${assets?.meta?.rawLength || 0}），已启用本地切分兜底\n`);
+                        }
                     } else {
                         throw createChapterAssetsValidationError(
                             index,
