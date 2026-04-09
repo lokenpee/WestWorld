@@ -21,7 +21,23 @@ export function createTaskStateService(deps = {}) {
     } = deps;
 
     const TASK_STATE_TYPE = 'StoryWeaver.taskState';
-    const TASK_STATE_VERSION = '3.0.0';
+    const TASK_STATE_VERSION = '3.2.0';
+    const SPLIT_TYPES = new Set([
+        'goal_shift',
+        'situation_change',
+        'relationship_shift',
+        'revelation',
+        'decision_point',
+        'emotional_turn',
+    ]);
+    const LEGACY_SPLIT_TYPE_MAP = {
+        scene_switch: 'situation_change',
+        action_closed: 'goal_shift',
+        dialogue_closed: 'goal_shift',
+        plot_twist: 'revelation',
+        perspective_switch: 'relationship_shift',
+        interaction_point: 'decision_point',
+    };
 
     function clampInt(value, min, max, fallback = min) {
         const parsed = parseInt(value, 10);
@@ -29,23 +45,36 @@ export function createTaskStateService(deps = {}) {
         return Math.max(min, Math.min(max, parsed));
     }
 
+    function normalizeSplitType(type) {
+        const raw = String(type || '').trim();
+        if (SPLIT_TYPES.has(raw)) return raw;
+        if (LEGACY_SPLIT_TYPE_MAP[raw]) return LEGACY_SPLIT_TYPE_MAP[raw];
+        return 'goal_shift';
+    }
+
     function normalizeSplitRule(rawRule = {}) {
         const source = rawRule && typeof rawRule === 'object' ? rawRule : {};
-        const rawMatched = Array.isArray(source.matched)
-            ? source.matched
-            : (source.matched ? [source.matched] : []);
-        const matched = rawMatched
-            .map((rule) => String(rule || '').trim())
-            .filter(Boolean)
-            .slice(0, 8);
-        const primary = String(source.primary || source.rule || matched[0] || '动作闭环').trim() || '动作闭环';
-        if (!matched.includes(primary)) {
-            matched.unshift(primary);
-        }
+        const primary = normalizeSplitType(source.primary || source.rule || source.main || source.type || 'goal_shift');
+        const rationale = String(source.rationale || source.reason || '').trim()
+            || `选择 ${primary} 以保持叙事单元完整并避免事件被切开。`;
         return {
             primary,
-            matched: matched.slice(0, 8),
+            rationale,
         };
+    }
+
+    function normalizeSelfCheck(rawValue = '') {
+        const source = rawValue && typeof rawValue === 'object' ? rawValue : null;
+        const direct = typeof rawValue === 'string' ? rawValue : '';
+        const text = String(
+            source?.self_check
+            || source?.selfCheck
+            || source?.note
+            || source?.summary
+            || direct
+            || ''
+        ).trim();
+        return text || '未提供自检说明。';
     }
 
     function normalizeBeatItem(beat = {}, index = 0) {
@@ -55,8 +84,18 @@ export function createTaskStateService(deps = {}) {
             : [];
         return {
             id: String(source.id || `b${index + 1}`).trim() || `b${index + 1}`,
-            summary: String(source.summary || source.event || source.description || `事件点${index + 1}`).trim() || `事件点${index + 1}`,
+            summary: String(source.event_summary || source.eventSummary || source.summary || source.event || source.description || `事件点${index + 1}`).trim() || `事件点${index + 1}`,
+            event_summary: String(source.event_summary || source.eventSummary || source.summary || source.event || source.description || `事件点${index + 1}`).trim() || `事件点${index + 1}`,
             exitCondition: String(source.exitCondition || source.exit_condition || '等待用户行动或关键互动完成').trim() || '等待用户行动或关键互动完成',
+            split_reason: String(source.split_reason || source.splitReason || source.reason || '用于保持叙事单元完整。').trim() || '用于保持叙事单元完整。',
+            self_check: normalizeSelfCheck(
+                source.self_check
+                || source.selfCheck
+                || source.reflection
+                || source.self_review
+                || source.note
+                || ''
+            ),
             tags,
             original_text: typeof source.original_text === 'string'
                 ? source.original_text

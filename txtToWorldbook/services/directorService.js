@@ -33,22 +33,38 @@ export function createDirectorService(deps = {}) {
         return plain.length > maxLen ? `${plain.slice(0, maxLen)}...` : plain;
     }
 
+    const SPLIT_TYPES = new Set([
+        'goal_shift',
+        'situation_change',
+        'relationship_shift',
+        'revelation',
+        'decision_point',
+        'emotional_turn',
+    ]);
+    const LEGACY_SPLIT_TYPE_MAP = {
+        scene_switch: 'situation_change',
+        action_closed: 'goal_shift',
+        dialogue_closed: 'goal_shift',
+        plot_twist: 'revelation',
+        perspective_switch: 'relationship_shift',
+        interaction_point: 'decision_point',
+    };
+
+    function normalizeSplitType(type) {
+        const raw = String(type || '').trim();
+        if (SPLIT_TYPES.has(raw)) return raw;
+        if (LEGACY_SPLIT_TYPE_MAP[raw]) return LEGACY_SPLIT_TYPE_MAP[raw];
+        return 'goal_shift';
+    }
+
     function normalizeSplitRule(rawRule = {}) {
         const source = rawRule && typeof rawRule === 'object' ? rawRule : {};
-        const rawMatched = Array.isArray(source.matched)
-            ? source.matched
-            : (source.matched ? [source.matched] : []);
-        const matched = rawMatched
-            .map((rule) => String(rule || '').trim())
-            .filter(Boolean)
-            .slice(0, 8);
-        const primary = String(source.primary || source.rule || matched[0] || '动作闭环').trim() || '动作闭环';
-        if (!matched.includes(primary)) {
-            matched.unshift(primary);
-        }
+        const primary = normalizeSplitType(source.primary || source.rule || source.main || source.type || 'goal_shift');
+        const rationale = String(source.rationale || source.reason || '').trim()
+            || `选择 ${primary} 以保持叙事单元完整并避免事件被切开。`;
         return {
             primary,
-            matched: matched.slice(0, 8),
+            rationale,
         };
     }
 
@@ -64,11 +80,9 @@ export function createDirectorService(deps = {}) {
         const splitRule = beat?.split_rule && typeof beat.split_rule === 'object'
             ? beat.split_rule
             : normalizeSplitRule({});
-        const primary = String(splitRule.primary || '动作闭环').trim() || '动作闭环';
-        const matched = Array.isArray(splitRule.matched)
-            ? splitRule.matched.map((rule) => String(rule || '').trim()).filter(Boolean)
-            : [];
-        return `主导规则: ${primary}${matched.length > 0 ? ` | 命中规则: ${matched.join('、')}` : ''}`;
+        const primary = normalizeSplitType(splitRule.primary || 'goal_shift');
+        const rationale = String(splitRule.rationale || splitRule.reason || '').trim() || '未提供规则理由';
+        return `规则: ${primary} | 理由: ${rationale}`;
     }
 
     function normalizeBeat(rawBeat, idx) {
@@ -78,7 +92,7 @@ export function createDirectorService(deps = {}) {
             : [];
         return {
             id: String(source.id || `b${idx + 1}`),
-            summary: toShortText(source.summary || source.event || source.description || `事件点${idx + 1}`, 100),
+            summary: toShortText(source.event_summary || source.eventSummary || source.summary || source.event || source.description || `事件点${idx + 1}`, 100),
             exitCondition: toShortText(source.exitCondition || source.exit_condition || '等待关键互动完成', 100),
             tags,
             original_text: typeof source.original_text === 'string'

@@ -806,6 +806,15 @@ export function ensureModalStyles() {
             margin-bottom: 4px;
         }
 
+        .ttw-beat-line {
+            font-size: 12px;
+            color: var(--ttw-text-primary);
+            line-height: 1.58;
+            margin-bottom: 4px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
         .ttw-beat-exit {
             font-size: 11px;
             color: var(--ttw-text-muted);

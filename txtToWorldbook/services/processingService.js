@@ -34,15 +34,23 @@
     } = deps;
 
     const SPLIT_TYPES = new Set([
-        'scene_switch',
-        'action_closed',
-        'dialogue_closed',
-        'plot_twist',
-        'perspective_switch',
-        'interaction_point',
+        'goal_shift',
+        'situation_change',
+        'relationship_shift',
+        'revelation',
+        'decision_point',
+        'emotional_turn',
     ]);
-    const MIN_ANCHOR_LEN = 20;
-    const MAX_ANCHOR_LEN = 100;
+    const LEGACY_SPLIT_TYPE_MAP = {
+        scene_switch: 'situation_change',
+        action_closed: 'goal_shift',
+        dialogue_closed: 'goal_shift',
+        plot_twist: 'revelation',
+        perspective_switch: 'relationship_shift',
+        interaction_point: 'decision_point',
+    };
+    const MIN_ANCHOR_LEN = 12;
+    const MAX_ANCHOR_LEN = 180;
 
     const transitionTo = (status) => {
         if (typeof setProcessingStatus === 'function') {
@@ -344,35 +352,55 @@
         }
     }
 
+    function normalizeSelfCheck(rawValue, extraWarnings = []) {
+        const source = rawValue && typeof rawValue === 'object' ? rawValue : null;
+        const direct = typeof rawValue === 'string' ? rawValue : '';
+        const base = String(
+            source?.self_check
+            || source?.selfCheck
+            || source?.note
+            || source?.summary
+            || direct
+            || ''
+        ).trim();
+        const warningText = Array.isArray(extraWarnings)
+            ? extraWarnings.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 3).join('；')
+            : '';
+        if (base && warningText) return `${base}（${warningText}）`;
+        if (base) return base;
+        if (warningText) return `已自动修正切分：${warningText}`;
+        return '已完成自检：切点可定位并保持章节连贯。';
+    }
+
     function normalizeSplitRule(rawRule) {
         const source = rawRule && typeof rawRule === 'object' ? rawRule : {};
-        const rawMatched = Array.isArray(source.matched)
-            ? source.matched
-            : (source.matched ? [source.matched] : []);
-        const matched = rawMatched
-            .map((rule) => String(rule || '').trim())
-            .filter(Boolean)
-            .slice(0, 8);
-
-        const fallbackPrimary = matched[0] || '';
-        let primary = String(source.primary || source.rule || source.main || fallbackPrimary || '').trim();
-        if (!primary) {
-            primary = '动作闭环';
-        }
-        if (!matched.includes(primary)) {
-            matched.unshift(primary);
-        }
+        const legacyMatched = Array.isArray(source.matched)
+            ? source.matched.map((item) => String(item || '').trim()).filter(Boolean)
+            : [];
+        const primary = normalizeSplitType(source.primary || source.rule || source.main || legacyMatched[0] || 'goal_shift');
+        const rationale = String(source.rationale || source.reason || '').trim()
+            || `该切分属于 ${primary}，用于保持叙事单元完整并避免事件被切开。`;
 
         return {
             primary,
-            matched: matched.slice(0, 8),
+            rationale,
         };
     }
 
     function normalizeBeatItem(rawBeat, idx, fallbackSummary = '') {
         const source = rawBeat && typeof rawBeat === 'object' ? rawBeat : {};
-        const summary = String(source.summary || source.event || source.description || fallbackSummary || '').trim();
+        const eventSummary = String(source.event_summary || source.eventSummary || source.summary || source.event || source.description || fallbackSummary || '').trim();
+        const summary = String(source.summary || eventSummary || fallbackSummary || '').trim();
         const exitCondition = String(source.exitCondition || source.exit_condition || '').trim();
+        const splitReason = String(source.split_reason || source.splitReason || source.reason || '').trim();
+        const selfCheck = normalizeSelfCheck(
+            source.self_check
+            || source.selfCheck
+            || source.reflection
+            || source.self_review
+            || source.note
+            || ''
+        );
         const tags = Array.isArray(source.tags)
             ? source.tags.map((t) => String(t || '').trim()).filter(Boolean).slice(0, 4)
             : [];
@@ -384,7 +412,10 @@
         return {
             id: String(source.id || `b${idx + 1}`).trim() || `b${idx + 1}`,
             summary: summary || `事件点${idx + 1}`,
+            event_summary: eventSummary || summary || `事件点${idx + 1}`,
             exitCondition: exitCondition || '等待用户行动或关键互动完成',
+            split_reason: splitReason || '该切分用于保持叙事单元完整并突出剧情转折。',
+            self_check: selfCheck,
             tags,
             original_text: originalText,
             split_rule: splitRule,
@@ -592,21 +623,96 @@
         };
     }
 
+    function isNaturalBoundaryChar(ch) {
+        return /[。！？!?；;\n]/.test(ch || '');
+    }
+
+    function isNaturalCutPosition(text, cutPos) {
+        const source = String(text || '');
+        if (!source.length) return false;
+        const pos = Math.max(0, Math.min(source.length, Number(cutPos) || 0));
+        if (pos <= 0 || pos >= source.length) return true;
+        return isNaturalBoundaryChar(source[pos - 1]) || isNaturalBoundaryChar(source[pos]);
+    }
+
+    function isInsideQuoteOrBracket(text, cutPos) {
+        const source = String(text || '');
+        const limit = Math.max(0, Math.min(source.length, Number(cutPos) || 0));
+
+        const bracketPairs = {
+            '(': ')',
+            '（': '）',
+            '[': ']',
+            '【': '】',
+            '{': '}',
+            '<': '>',
+            '《': '》',
+        };
+        const closingToOpen = Object.entries(bracketPairs)
+            .reduce((acc, [open, close]) => {
+                acc[close] = open;
+                return acc;
+            }, {});
+        const stack = [];
+        let cnDoubleQuoteOpen = false;
+        let cnSingleQuoteOpen = false;
+        let asciiDoubleQuoteOpen = false;
+
+        for (let i = 0; i < limit; i++) {
+            const ch = source[i];
+            const prev = i > 0 ? source[i - 1] : '';
+
+            if (ch === '“') {
+                cnDoubleQuoteOpen = true;
+                continue;
+            }
+            if (ch === '”') {
+                cnDoubleQuoteOpen = false;
+                continue;
+            }
+            if (ch === '‘') {
+                cnSingleQuoteOpen = true;
+                continue;
+            }
+            if (ch === '’') {
+                cnSingleQuoteOpen = false;
+                continue;
+            }
+            if (ch === '"' && prev !== '\\') {
+                asciiDoubleQuoteOpen = !asciiDoubleQuoteOpen;
+                continue;
+            }
+
+            if (bracketPairs[ch]) {
+                stack.push(ch);
+                continue;
+            }
+
+            const openPair = closingToOpen[ch];
+            if (openPair) {
+                if (stack.length > 0 && stack[stack.length - 1] === openPair) {
+                    stack.pop();
+                }
+            }
+        }
+
+        return cnDoubleQuoteOpen || cnSingleQuoteOpen || asciiDoubleQuoteOpen || stack.length > 0;
+    }
+
     function findNearbySplitPoint(text, target, maxOffset = 160) {
         const source = String(text || '');
         const len = source.length;
         if (len === 0) return 0;
         const clampedTarget = Math.max(1, Math.min(len - 1, target));
-        const isBoundary = (ch) => /[。！？!?；;\n]/.test(ch || '');
 
         for (let offset = 0; offset <= maxOffset; offset++) {
             const right = clampedTarget + offset;
-            if (right < len && isBoundary(source[right])) {
+            if (right < len && isNaturalBoundaryChar(source[right])) {
                 return right + 1;
             }
 
             const left = clampedTarget - offset;
-            if (left > 0 && isBoundary(source[left - 1])) {
+            if (left > 0 && isNaturalBoundaryChar(source[left - 1])) {
                 return left;
             }
         }
@@ -614,11 +720,123 @@
         return clampedTarget;
     }
 
+    function findNearestSafeBoundaryCut(text, center, minCut, maxCut, maxOffset = 420) {
+        const source = String(text || '');
+        const len = source.length;
+        if (!source.trim()) return null;
+        const leftBound = Math.max(1, Math.min(len - 1, Math.round(minCut)));
+        const rightBound = Math.max(leftBound, Math.min(len - 1, Math.round(maxCut)));
+        const pivot = Math.max(leftBound, Math.min(rightBound, Math.round(center)));
+
+        for (let offset = 0; offset <= maxOffset; offset++) {
+            const candidates = [];
+            const right = pivot + offset;
+            const left = pivot - offset;
+            if (right >= leftBound && right <= rightBound) candidates.push(right);
+            if (offset > 0 && left >= leftBound && left <= rightBound) candidates.push(left);
+
+            for (const candidate of candidates) {
+                if (!isNaturalCutPosition(source, candidate)) continue;
+                if (isInsideQuoteOrBracket(source, candidate)) continue;
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    function splitContentWithProtectedTargets(content, cutTargets) {
+        const source = String(content || '');
+        const totalLen = source.length;
+        const minLen = 80;
+        const maxLen = 3000;
+        const targets = Array.isArray(cutTargets)
+            ? cutTargets.map((t) => (Number.isFinite(t) ? Math.round(t) : null)).filter((t) => typeof t === 'number')
+            : [];
+
+        if (!source.trim()) {
+            return {
+                segments: [],
+                appliedCuts: [],
+                warningsByPoint: [],
+            };
+        }
+
+        const beatCount = targets.length + 1;
+        if (beatCount < 3 || beatCount > 8) return null;
+        if (totalLen < beatCount * minLen) return null;
+        if (totalLen > beatCount * maxLen) return null;
+
+        const cuts = [0];
+        const warningsByPoint = [];
+
+        for (let i = 0; i < targets.length; i++) {
+            const remainingBeats = beatCount - (i + 1);
+            const prev = cuts[cuts.length - 1];
+            const minCut = prev + minLen;
+            const maxCut = totalLen - (remainingBeats * minLen);
+            if (minCut > maxCut) return null;
+
+            const pointWarnings = [];
+            const desired = Math.max(minCut, Math.min(maxCut, targets[i]));
+            let cut = findNearbySplitPoint(source, desired, 240);
+            cut = Math.max(minCut, Math.min(maxCut, cut));
+
+            if (!isNaturalCutPosition(source, cut)) {
+                const adjusted = findNearestSafeBoundaryCut(source, cut, minCut, maxCut, 420);
+                if (!Number.isInteger(adjusted)) return null;
+                if (adjusted !== cut) {
+                    pointWarnings.push('cut_adjusted_to_natural_boundary');
+                }
+                cut = adjusted;
+            }
+
+            if (isInsideQuoteOrBracket(source, cut)) {
+                const adjusted = findNearestSafeBoundaryCut(source, cut, minCut, maxCut, 500);
+                if (!Number.isInteger(adjusted)) return null;
+                if (adjusted !== cut) {
+                    pointWarnings.push('cut_moved_outside_quote_or_bracket');
+                }
+                cut = adjusted;
+                if (isInsideQuoteOrBracket(source, cut)) return null;
+            }
+
+            if ((cut - prev) > maxLen) {
+                const hardMax = Math.min(maxCut, prev + maxLen);
+                const adjusted = findNearestSafeBoundaryCut(source, hardMax, minCut, hardMax, 240);
+                if (!Number.isInteger(adjusted)) return null;
+                if (adjusted !== cut) {
+                    pointWarnings.push('cut_shifted_for_max_length_constraint');
+                }
+                cut = adjusted;
+            }
+
+            if (cut <= prev || cut < minCut || cut > maxCut) return null;
+
+            cuts.push(cut);
+            warningsByPoint.push(pointWarnings);
+        }
+        cuts.push(totalLen);
+
+        const segments = [];
+        for (let i = 0; i < beatCount; i++) {
+            const seg = source.slice(cuts[i], cuts[i + 1]);
+            if (seg.length < minLen || seg.length > maxLen) return null;
+            segments.push(seg);
+        }
+
+        return {
+            segments,
+            appliedCuts: cuts.slice(1, cuts.length - 1),
+            warningsByPoint,
+        };
+    }
+
     function trySplitContentWithBeatCount(content, beatCount) {
         const source = String(content || '');
         const totalLen = source.length;
-        const minLen = 200;
-        const maxLen = 1500;
+        const minLen = 80;
+        const maxLen = 3000;
 
         if (beatCount < 3 || beatCount > 8) return null;
         if (totalLen < beatCount * minLen) return null;
@@ -660,34 +878,30 @@
     function normalizeSplitType(type) {
         const raw = String(type || '').trim();
         if (SPLIT_TYPES.has(raw)) return raw;
-        return 'action_closed';
+        if (LEGACY_SPLIT_TYPE_MAP[raw]) return LEGACY_SPLIT_TYPE_MAP[raw];
+        return 'goal_shift';
     }
 
-    function normalizeStrategySplitRule(rawRule, fallbackType = 'action_closed') {
+    function normalizeStrategySplitRule(rawRule, fallbackType = 'goal_shift') {
         const source = rawRule && typeof rawRule === 'object' ? rawRule : {};
-        const rawMatched = Array.isArray(source.matched)
-            ? source.matched
-            : (source.matched ? [source.matched] : []);
-        const matched = rawMatched
-            .map((rule) => normalizeSplitType(rule))
-            .filter(Boolean)
-            .slice(0, 8);
-        const fallback = normalizeSplitType(fallbackType);
+        const legacyMatched = Array.isArray(source.matched)
+            ? source.matched.map((rule) => normalizeSplitType(rule)).filter(Boolean)
+            : [];
+        const fallback = normalizeSplitType(fallbackType || legacyMatched[0] || 'goal_shift');
         const primary = normalizeSplitType(source.primary || source.rule || source.main || fallback);
-        if (!matched.includes(primary)) {
-            matched.unshift(primary);
-        }
+        const rationale = String(source.rationale || source.reason || '').trim()
+            || `该切分属于 ${primary}，用于保持叙事单元完整并避免事件被切开。`;
         return {
             primary,
-            matched: matched.slice(0, 8),
+            rationale,
         };
     }
 
     function trySplitContentWithCutTargets(content, cutTargets) {
         const source = String(content || '');
         const totalLen = source.length;
-        const minLen = 200;
-        const maxLen = 1500;
+        const minLen = 80;
+        const maxLen = 3000;
         const targets = Array.isArray(cutTargets)
             ? cutTargets.map((t) => (Number.isFinite(t) ? Math.round(t) : null)).filter((t) => typeof t === 'number')
             : [];
@@ -726,7 +940,7 @@
         return segments;
     }
 
-    function buildBeatsFromSegments(segments, chapterIndex, splitPoints = []) {
+    function buildBeatsFromSegments(segments, chapterIndex, splitPoints = [], splitWarnings = []) {
         const list = Array.isArray(segments) ? segments : [];
         const points = Array.isArray(splitPoints) ? splitPoints : [];
         const lastIdx = list.length - 1;
@@ -737,15 +951,22 @@
                 ? Math.max(0, Math.min(points.length - 1, idx - 1))
                 : -1;
             const point = pointIndex >= 0 ? points[pointIndex] : null;
-            const splitType = normalizeSplitType(point?.split_rule?.primary || 'action_closed');
+            const pointWarnings = pointIndex >= 0 && Array.isArray(splitWarnings[pointIndex])
+                ? splitWarnings[pointIndex]
+                : [];
+            const splitType = normalizeSplitType(point?.split_rule?.primary || 'goal_shift');
             const splitRule = normalizeStrategySplitRule(point?.split_rule, splitType);
             return normalizeBeatItem({
                 id: `b${idx + 1}`,
                 summary,
-                exitCondition: '该段核心行动完成，或出现新的互动焦点。',
+                event_summary: point?.event_summary || summary,
+                exit_condition: point?.exit_condition || point?.exitCondition || '当本节拍核心目标完成或局势发生明显转折时。',
+                split_reason: point?.split_reason || `该切点将叙事从上一阶段过渡到下一阶段，类型为 ${splitRule.primary}。`,
+                self_check: point?.self_check || point?.selfCheck || '',
                 tags,
                 original_text: seg,
                 split_rule: splitRule,
+                self_review: normalizeSelfCheck(point?.self_check || point?.selfCheck || point?.reflection || null, pointWarnings),
             }, idx, summary);
         });
     }
@@ -924,6 +1145,34 @@
         return bestStart;
     }
 
+    function findBestExactAnchorStartNearExpected(source, anchor, expectedPos, searchCursor = 0) {
+        const text = String(source || '');
+        const target = String(anchor || '').trim();
+        if (!text.trim() || !target) return null;
+
+        const expected = Number.isFinite(expectedPos) ? Math.round(expectedPos) : Math.round(text.length / 2);
+        let cursor = Math.max(0, Number(searchCursor) || 0);
+        let found = text.indexOf(target, cursor);
+        if (found < 0) return null;
+
+        let best = found;
+        let bestDist = Math.abs(found - expected);
+        let count = 0;
+
+        while (found >= 0 && count < 256) {
+            const dist = Math.abs(found - expected);
+            if (dist < bestDist) {
+                best = found;
+                bestDist = dist;
+            }
+            cursor = found + Math.max(1, Math.floor(target.length / 3));
+            found = text.indexOf(target, cursor);
+            count++;
+        }
+
+        return best;
+    }
+
     function buildExpectedAnchorPositions(totalLength, splitCount) {
         const expected = [];
         const safeCount = Math.max(0, Number(splitCount) || 0);
@@ -933,83 +1182,220 @@
         return expected;
     }
 
+    function chooseSplitPointsBySpread(points, expectedCount) {
+        const list = Array.isArray(points) ? points : [];
+        if (expectedCount <= 0) return [];
+        if (list.length <= expectedCount) return list.slice();
+        if (expectedCount === 1) return [list[Math.max(0, Math.min(list.length - 1, Math.round((list.length - 1) / 2)))] || list[0]];
+
+        const chosen = [];
+        const used = new Set();
+        const step = (list.length - 1) / (expectedCount - 1);
+        for (let i = 0; i < expectedCount; i++) {
+            let idx = Math.round(i * step);
+            idx = Math.max(0, Math.min(list.length - 1, idx));
+            while (used.has(idx) && idx < list.length - 1) idx++;
+            while (used.has(idx) && idx > 0) idx--;
+            used.add(idx);
+            chosen.push(list[idx]);
+        }
+        return chosen;
+    }
+
+    function normalizeRawSplitPointCandidate(rawPoint, idx = 0) {
+        const index = Number.isFinite(idx) ? Math.max(0, Math.floor(idx)) : 0;
+        if (rawPoint && typeof rawPoint === 'object' && !Array.isArray(rawPoint)) {
+            return rawPoint;
+        }
+        if (typeof rawPoint === 'string') {
+            const anchor = rawPoint.trim();
+            return {
+                anchor,
+                self_check: anchor ? '' : `auto_coerced_empty_string_point_${index + 1}`,
+            };
+        }
+        if (rawPoint == null) {
+            return {
+                anchor: '',
+                self_check: `auto_coerced_null_point_${index + 1}`,
+            };
+        }
+        return {
+            anchor: String(rawPoint || '').trim(),
+            self_check: `auto_coerced_primitive_point_${index + 1}`,
+        };
+    }
+
+    function autoFixSplitPointsCount(rawSplitPoints, expectedSplitCount, beatCount, chapterContent) {
+        const list = Array.isArray(rawSplitPoints)
+            ? rawSplitPoints.map((item, idx) => normalizeRawSplitPointCandidate(item, idx))
+            : [];
+        const warnings = [];
+
+        if (list.length === 0 && expectedSplitCount > 0) {
+            const generated = [];
+            for (let i = 0; i < expectedSplitCount; i++) {
+                generated.push({
+                    anchor: '',
+                    self_check: `auto_generated_split_point_${i + 1}`,
+                });
+            }
+            warnings.push(`auto_generated_split_points:${generated.length}`);
+            return {
+                splitPoints: generated,
+                warnings,
+                mode: 'generated-by-expected',
+            };
+        }
+
+        if (list.length === expectedSplitCount) {
+            return {
+                splitPoints: list,
+                warnings,
+                mode: 'exact',
+            };
+        }
+
+        if (list.length === beatCount && beatCount > 1 && expectedSplitCount > 0) {
+            const source = String(chapterContent || '');
+            const firstAnchor = String(list[0]?.anchor || list[0]?.anchor_text || list[0]?.anchorText || '').trim();
+            const firstPos = firstAnchor ? source.indexOf(firstAnchor) : -1;
+            const dropFirst = firstPos >= 0 && firstPos <= Math.max(200, Math.floor(source.length * 0.15));
+
+            const fixed = dropFirst ? list.slice(1) : list.slice(0, expectedSplitCount);
+            warnings.push(`auto_fixed_split_points_count:${list.length}->${fixed.length}`);
+            warnings.push(dropFirst ? 'dropped_opening_split_point' : 'dropped_trailing_split_point');
+            return {
+                splitPoints: fixed,
+                warnings,
+                mode: 'legacy-beat-count-fixed',
+            };
+        }
+
+        if (list.length > expectedSplitCount && expectedSplitCount > 0) {
+            const fixed = chooseSplitPointsBySpread(list, expectedSplitCount);
+            warnings.push(`auto_trimmed_split_points:${list.length}->${fixed.length}`);
+            return {
+                splitPoints: fixed,
+                warnings,
+                mode: 'trimmed-by-spread',
+            };
+        }
+
+        if (list.length > 0 && list.length < expectedSplitCount) {
+            const fixed = list.slice();
+            while (fixed.length < expectedSplitCount) {
+                fixed.push({
+                    anchor: '',
+                    self_check: `auto_padding_split_point_${fixed.length + 1}`,
+                });
+            }
+            warnings.push(`auto_padded_split_points:${list.length}->${fixed.length}`);
+            return {
+                splitPoints: fixed,
+                warnings,
+                mode: 'padded-by-expected',
+            };
+        }
+
+        return {
+            splitPoints: list,
+            warnings,
+            mode: 'unfixed',
+        };
+    }
+
     function applySplitStrategyWithAnchors(content, strategy = {}, chapterIndex = 1) {
         const source = String(content || '');
         if (!source.trim()) return null;
 
-        const beatCount = Number(strategy?.beat_count);
-        if (!Number.isFinite(beatCount) || beatCount < 3 || beatCount > 8) {
-            throw createChapterAssetsContractError(chapterIndex - 1, `split_strategy.beat_count 非法: ${strategy?.beat_count}`, {
-                strategy,
-            });
+        const rawPoints = Array.isArray(strategy?.split_points)
+            ? strategy.split_points.map((item, idx) => normalizeRawSplitPointCandidate(item, idx))
+            : [];
+        const inferredBeatCount = Math.max(3, Math.min(8, rawPoints.length + 1 || 4));
+        const beatCountRaw = Number(strategy?.beat_count);
+        let beatCount = Number.isFinite(beatCountRaw) ? Math.round(beatCountRaw) : inferredBeatCount;
+        if (beatCount < 3 || beatCount > 8) {
+            beatCount = inferredBeatCount;
         }
 
         const expectedSplitCount = beatCount - 1;
-        const splitPoints = Array.isArray(strategy?.split_points)
-            ? strategy.split_points.slice(0, expectedSplitCount)
-            : [];
-        if (splitPoints.length !== expectedSplitCount) {
-            throw createChapterAssetsContractError(chapterIndex - 1, `split_points 数量需等于 beat_count-1（期望=${expectedSplitCount}，实际=${splitPoints.length}）`, {
-                strategy,
+        let splitPoints = rawPoints.slice(0, expectedSplitCount);
+        while (splitPoints.length < expectedSplitCount) {
+            splitPoints.push({
+                anchor: '',
+                self_check: `auto_padded_split_point_${splitPoints.length + 1}`,
             });
         }
 
         const expectedPositions = buildExpectedAnchorPositions(source.length, splitPoints.length);
         const anchorStarts = [];
+        const anchorWarnings = [];
         let searchCursor = 0;
 
         for (let i = 0; i < splitPoints.length; i++) {
             const point = splitPoints[i] || {};
             const anchor = String(point.anchor || '').trim();
             const anchorLen = anchor.length;
+            const pointWarnings = [];
 
             if (!anchor) {
-                throw createChapterAssetsContractError(chapterIndex - 1, `第${i + 1}个 split_point 缺少 anchor`, {
-                    splitPointIndex: i + 1,
-                    strategy,
-                });
+                const expected = expectedPositions[i];
+                const fallbackCut = Number.isFinite(expected) ? expected : Math.round((source.length * (i + 1)) / (splitPoints.length + 1));
+                anchorStarts.push(Math.max(searchCursor, Math.min(source.length - 1, Math.round(fallbackCut))));
+                pointWarnings.push('anchor_missing_used_expected_position');
+                anchorWarnings.push(pointWarnings);
+                searchCursor = Math.max(anchorStarts[anchorStarts.length - 1] + 1, searchCursor + 1);
+                continue;
             }
             if (anchorLen < MIN_ANCHOR_LEN || anchorLen > MAX_ANCHOR_LEN) {
-                throw createChapterAssetsContractError(chapterIndex - 1, `第${i + 1}个 split_point.anchor 长度需在${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN}之间，当前为${anchorLen}`, {
-                    splitPointIndex: i + 1,
-                    strategy,
-                });
+                pointWarnings.push(`anchor_length_out_of_range:${anchorLen}`);
             }
 
-            let foundAt = source.indexOf(anchor, searchCursor);
+            const expected = expectedPositions[i];
+            let foundAt = findBestExactAnchorStartNearExpected(source, anchor, expected, searchCursor);
             if (foundAt < 0) {
-                const expected = expectedPositions[i];
                 const fuzzyStart = findBestAnchorStartByFuzzy(source, anchor, expected);
                 if (Number.isInteger(fuzzyStart) && fuzzyStart >= searchCursor) {
                     foundAt = fuzzyStart;
+                    pointWarnings.push('anchor_fuzzy_matched');
                 }
             }
 
             if (foundAt < 0) {
-                throw createChapterAssetsContractError(chapterIndex - 1, `第${i + 1}个 split_point.anchor 无法在正文中定位`, {
-                    splitPointIndex: i + 1,
-                    anchor,
-                    strategy,
-                });
+                const hintText = [
+                    String(point.event_summary || point.eventSummary || '').trim(),
+                    String(point.split_reason || point.splitReason || '').trim(),
+                ].filter(Boolean).join('；');
+                const hintCut = hintText ? findBestCutByHint(source, hintText, expected) : null;
+                if (Number.isInteger(hintCut) && hintCut >= searchCursor) {
+                    foundAt = hintCut;
+                    pointWarnings.push('anchor_located_by_hint_fallback');
+                }
+            }
+
+            if (foundAt < 0) {
+                const fallbackCut = Number.isFinite(expected) ? expected : Math.round((source.length * (i + 1)) / (splitPoints.length + 1));
+                foundAt = Math.max(searchCursor, Math.min(source.length - 1, Math.round(fallbackCut)));
+                pointWarnings.push('anchor_unresolved_used_expected_position');
             }
 
             if (i > 0 && foundAt <= anchorStarts[i - 1]) {
-                throw createChapterAssetsContractError(chapterIndex - 1, `split_point.anchor 定位顺序异常（第${i}与第${i + 1}个锚点发生倒序/重叠）`, {
-                    splitPointIndex: i + 1,
-                    strategy,
-                });
+                foundAt = Math.min(source.length - 1, anchorStarts[i - 1] + 1);
+                pointWarnings.push('anchor_order_fixed_monotonic');
             }
 
             anchorStarts.push(foundAt);
+            anchorWarnings.push(pointWarnings);
             searchCursor = Math.max(foundAt + 1, foundAt + Math.floor(anchor.length / 2));
         }
 
         const cutTargets = anchorStarts;
-        const segments = trySplitContentWithCutTargets(source, cutTargets);
-        if (!segments) {
+        const splitOutcome = splitContentWithProtectedTargets(source, cutTargets);
+        if (!splitOutcome || !Array.isArray(splitOutcome.segments)) {
             throw createChapterAssetsSplitError(
                 chapterIndex - 1,
-                '锚点切分后无法满足节拍长度约束（200-1500）或切分数量约束',
+                '锚点切分后无法满足自然边界/引号括号保护或节拍长度约束（80-3000）',
                 {
                     beatCount,
                     cutTargets,
@@ -1019,9 +1405,14 @@
         }
 
         return {
-            segments,
+            segments: splitOutcome.segments,
             splitPoints,
             anchorStarts,
+            appliedCuts: splitOutcome.appliedCuts,
+            cutWarnings: splitPoints.map((_, idx) => [
+                ...(Array.isArray(anchorWarnings[idx]) ? anchorWarnings[idx] : []),
+                ...(Array.isArray(splitOutcome.warningsByPoint?.[idx]) ? splitOutcome.warningsByPoint[idx] : []),
+            ]),
         };
     }
 
@@ -1086,27 +1477,13 @@
             const beat = beats[i] || {};
             const originalText = typeof beat.original_text === 'string' ? beat.original_text : '';
             const len = originalText.length;
-            if (len < 200 || len > 1500) {
-                const hint = len === 0 ? '（未提取到 original_text）' : '';
-                throw createChapterAssetsValidationError(index, `第${i + 1}个节拍原文长度需在200-1500字，当前为${len}${hint}`, {
+            if (len <= 0) {
+                throw createChapterAssetsValidationError(index, `第${i + 1}个节拍原文为空`, {
                     beatIndex: i + 1,
                     beatCount: beatSummary.count,
                     emptyBeatIndices: beatSummary.emptyBeatIndices,
                     lengths: beatSummary.lengths,
                 });
-            }
-
-            const splitRule = beat.split_rule && typeof beat.split_rule === 'object' ? beat.split_rule : {};
-            const primary = String(splitRule.primary || '').trim();
-            const matched = Array.isArray(splitRule.matched)
-                ? splitRule.matched.map((rule) => String(rule || '').trim()).filter(Boolean)
-                : [];
-
-            if (!primary || matched.length === 0) {
-                throw createChapterAssetsValidationError(index, `第${i + 1}个节拍缺少 split_rule.primary 或 split_rule.matched`);
-            }
-            if (!matched.includes(primary)) {
-                throw createChapterAssetsValidationError(index, `第${i + 1}个节拍 split_rule.primary 未包含在 matched 中`);
             }
 
             mergedOriginal += originalText;
@@ -1130,69 +1507,83 @@
 
     function normalizeSplitPointForContract(rawPoint, idx, chapterIndex) {
         const source = rawPoint && typeof rawPoint === 'object' ? rawPoint : {};
+        const compatibilityWarnings = [];
         const anchor = String(source.anchor || source.anchor_text || source.anchorText || '').trim();
         const anchorLen = anchor.length;
-        const hint = String(source.hint || source.note || source.summary || '').trim();
+        const eventSummary = String(
+            source.event_summary || source.eventSummary || source.summary || source.event || source.description || ''
+        ).trim();
+        const exitCondition = String(source.exit_condition || source.exitCondition || '').trim();
+        const splitReason = String(source.split_reason || source.splitReason || source.reason || '').trim();
+        const selfCheck = normalizeSelfCheck(
+            source.self_check
+            || source.selfCheck
+            || source.reflection
+            || source.self_review
+            || source.note
+            || ''
+        );
         const rawSplitRule = source.split_rule || source.splitRule;
 
         if (!anchor) {
-            throw createChapterAssetsContractError(chapterIndex, `第${idx + 1}个 split_point 缺少 anchor`, {
-                splitPointIndex: idx + 1,
-            });
+            compatibilityWarnings.push('anchor_missing');
         }
 
         if (anchorLen < MIN_ANCHOR_LEN || anchorLen > MAX_ANCHOR_LEN) {
-            throw createChapterAssetsContractError(chapterIndex, `第${idx + 1}个 split_point.anchor 长度需在${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN}之间，当前为${anchorLen}`, {
-                splitPointIndex: idx + 1,
-            });
+            compatibilityWarnings.push(`anchor_length_out_of_range:${anchorLen}`);
         }
 
-        if (!rawSplitRule || typeof rawSplitRule !== 'object') {
-            throw createChapterAssetsContractError(chapterIndex, `第${idx + 1}个 split_point 缺少 split_rule`, {
-                splitPointIndex: idx + 1,
-            });
+        let normalizedExitCondition = exitCondition;
+        if (!normalizedExitCondition) {
+            normalizedExitCondition = '当本节拍目标完成或局势发生明显转折时退出该节拍。';
+            compatibilityWarnings.push('legacy_mapped_exit_condition');
         }
 
-        const rawPrimary = String(rawSplitRule.primary || rawSplitRule.rule || rawSplitRule.main || '').trim();
-        if (!rawPrimary || !SPLIT_TYPES.has(rawPrimary)) {
-            throw createChapterAssetsContractError(
-                chapterIndex,
-                `第${idx + 1}个 split_point.split_rule.primary 非法，必须为: ${Array.from(SPLIT_TYPES).join(', ')}`,
-                { splitPointIndex: idx + 1 }
-            );
+        let normalizedSplitReason = splitReason;
+        if (!normalizedSplitReason) {
+            normalizedSplitReason = '该切分点用于避免事件被切开，并保持前后节拍衔接。';
+            compatibilityWarnings.push('legacy_mapped_split_reason');
         }
 
-        if (!Array.isArray(rawSplitRule.matched) || rawSplitRule.matched.length === 0) {
-            throw createChapterAssetsContractError(chapterIndex, `第${idx + 1}个 split_point.split_rule.matched 必须是非空数组`, {
-                splitPointIndex: idx + 1,
-            });
+        const hasSplitRule = rawSplitRule && typeof rawSplitRule === 'object';
+        if (!hasSplitRule) {
+            compatibilityWarnings.push('split_rule_missing_auto_filled');
         }
 
-        const rawMatched = rawSplitRule.matched
-            .map((rule) => String(rule || '').trim())
-            .filter(Boolean);
-        const invalidMatched = rawMatched.filter((rule) => !SPLIT_TYPES.has(rule));
-        if (invalidMatched.length > 0) {
-            throw createChapterAssetsContractError(
-                chapterIndex,
-                `第${idx + 1}个 split_point.split_rule.matched 含非法类型: ${invalidMatched.join(', ')}`,
-                { splitPointIndex: idx + 1 }
-            );
-        }
-        if (!rawMatched.includes(rawPrimary)) {
-            throw createChapterAssetsContractError(
-                chapterIndex,
-                `第${idx + 1}个 split_point.split_rule.primary 必须包含在 matched 中`,
-                { splitPointIndex: idx + 1 }
-            );
+        const rawPrimary = String(
+            (hasSplitRule ? (rawSplitRule.primary || rawSplitRule.rule || rawSplitRule.main) : '')
+            || source.type || source.split_type || source.rule_type || ''
+        ).trim();
+        const normalizedPrimary = normalizeSplitType(rawPrimary || 'goal_shift');
+        if (!rawPrimary) {
+            compatibilityWarnings.push('split_rule_primary_missing_auto_filled');
+        } else if (normalizedPrimary !== rawPrimary) {
+            compatibilityWarnings.push(`legacy_mapped_type:${rawPrimary}->${normalizedPrimary}`);
         }
 
-        const splitRule = normalizeStrategySplitRule(rawSplitRule, rawPrimary);
+        let splitRule = normalizeStrategySplitRule(hasSplitRule ? rawSplitRule : {}, normalizedPrimary);
+        if (!String(splitRule.rationale || '').trim()) {
+            splitRule = {
+                ...splitRule,
+                rationale: `选择 ${normalizedPrimary} 是因为该切点前后在目标或局势上发生了可感知变化。`,
+            };
+            compatibilityWarnings.push('legacy_mapped_rationale');
+        }
+
+        if (!String(selfCheck || '').trim()) {
+            compatibilityWarnings.push('self_check_missing_auto_filled');
+        }
 
         return {
             anchor,
-            hint,
-            split_rule: splitRule,
+            event_summary: eventSummary || `节拍${idx + 1}`,
+            exit_condition: normalizedExitCondition,
+            split_reason: normalizedSplitReason,
+            self_check: normalizeSelfCheck(selfCheck, compatibilityWarnings),
+            split_rule: {
+                primary: splitRule.primary,
+                rationale: splitRule.rationale,
+            },
         };
     }
 
@@ -1219,48 +1610,71 @@
         const strategySource = parsed?.split_strategy && typeof parsed.split_strategy === 'object'
             ? parsed.split_strategy
             : parsed;
-        const beatCountRaw = Number(strategySource?.beat_count ?? strategySource?.beatCount ?? parsed?.beat_count ?? parsed?.beatCount);
-        if (!Number.isFinite(beatCountRaw)) {
-            throw createChapterAssetsContractError(index, '缺少 beat_count（3-8）', {
-                ...meta,
-            });
-        }
-        const beatCount = Math.round(beatCountRaw);
-        if (beatCount < 3 || beatCount > 8) {
-            throw createChapterAssetsContractError(index, `beat_count 需在3-8之间，当前为${beatCount}`);
-        }
-
         const rawSplitPoints = strategySource?.split_points ?? strategySource?.splitPoints ?? parsed?.split_points ?? parsed?.splitPoints;
-        if (!Array.isArray(rawSplitPoints) || rawSplitPoints.length === 0) {
-            throw createChapterAssetsContractError(index, '缺少 split_points 数组');
+        const rawPoints = Array.isArray(rawSplitPoints)
+            ? rawSplitPoints.map((point, idx) => normalizeRawSplitPointCandidate(point, idx))
+            : [];
+
+        const strategyWarnings = [];
+        const beatCountRaw = Number(strategySource?.beat_count ?? strategySource?.beatCount ?? parsed?.beat_count ?? parsed?.beatCount);
+        const inferredBeatCount = Math.max(3, Math.min(8, rawPoints.length > 0 ? rawPoints.length + 1 : 4));
+        let beatCount = Number.isFinite(beatCountRaw) ? Math.round(beatCountRaw) : null;
+        if (!Number.isFinite(beatCount)) {
+            beatCount = inferredBeatCount;
+            strategyWarnings.push('beat_count_inferred_from_split_points');
+        }
+        if (beatCount < 3 || beatCount > 8) {
+            beatCount = inferredBeatCount;
+            strategyWarnings.push(`beat_count_out_of_range_fixed:${beatCountRaw}->${beatCount}`);
         }
 
         const expectedSplitCount = beatCount - 1;
-        if (rawSplitPoints.length !== expectedSplitCount) {
-            throw createChapterAssetsContractError(
-                index,
-                `split_points 数量错误：期望 beat_count-1=${expectedSplitCount}，实际=${rawSplitPoints.length}`
-            );
+        const fixedCountResult = autoFixSplitPointsCount(rawPoints, expectedSplitCount, beatCount, memory?.content || '');
+        let normalizedPoints = Array.isArray(fixedCountResult.splitPoints)
+            ? fixedCountResult.splitPoints.slice(0, expectedSplitCount)
+            : [];
+        while (normalizedPoints.length < expectedSplitCount) {
+            normalizedPoints.push({
+                anchor: '',
+                self_check: `auto_forced_split_point_${normalizedPoints.length + 1}`,
+            });
+        }
+        if (normalizedPoints.length !== (Array.isArray(fixedCountResult.splitPoints) ? fixedCountResult.splitPoints.length : 0)) {
+            strategyWarnings.push('split_points_forced_to_expected_count');
         }
 
-        const splitPoints = rawSplitPoints
-            .slice(0, expectedSplitCount)
+        const splitPoints = normalizedPoints
             .map((point, idx) => normalizeSplitPointForContract(point, idx, index));
+
+        const mergedWarnings = [
+            ...(Array.isArray(fixedCountResult.warnings) ? fixedCountResult.warnings : []),
+            ...strategyWarnings,
+        ];
+
+        if (mergedWarnings.length > 0) {
+            splitPoints.forEach((point) => {
+                point.self_check = normalizeSelfCheck(point.self_check || '', mergedWarnings);
+            });
+        }
 
         return {
             kind: 'strategy',
             outline,
             script: null,
-            compatibility: 'new-strategy',
+            compatibility: fixedCountResult.mode === 'exact' ? 'new-strategy' : `new-strategy-${fixedCountResult.mode}`,
             strategy: {
-                beat_count: beatCount,
                 split_points: splitPoints,
             },
         };
     }
 
     function buildChapterAssetsFromSplit(memory, index, outline, strategy, applied, meta = {}) {
-        const beats = buildBeatsFromSegments(applied?.segments || [], index + 1, applied?.splitPoints || strategy?.split_points || []);
+        const beats = buildBeatsFromSegments(
+            applied?.segments || [],
+            index + 1,
+            applied?.splitPoints || strategy?.split_points || [],
+            applied?.cutWarnings || []
+        );
         const script = normalizeScript({
             goal: '围绕本章核心冲突推进剧情并保持叙事连续。',
             flow: outline,
@@ -1272,6 +1686,9 @@
             script,
             meta: {
                 parsed: true,
+                cutWarningCount: Array.isArray(applied?.cutWarnings)
+                    ? applied.cutWarnings.reduce((sum, item) => sum + (Array.isArray(item) ? item.length : 0), 0)
+                    : 0,
                 ...meta,
             },
         };
@@ -1330,13 +1747,17 @@
         });
     }
 
-    function buildChapterAssetsPrompt(memory, index) {
+    function buildChapterAssetsPrompt(memory, index, retryHint = '') {
         const chapterIndex = index + 1;
         const chapterTitle = memory.chapterTitle || `第${chapterIndex}章`;
         const previousMemory = index > 0 ? AppState.memory.queue[index - 1] : null;
         const previousOutline = previousMemory?.chapterOutline ? `\n上一章摘要：${previousMemory.chapterOutline}` : '';
+        const retryText = String(retryHint || '').replace(/\s+/g, ' ').trim();
+        const retryBlock = retryText
+            ? `\n\n上一次输出问题（本次优先修复）：\n- ${retryText}\n- 先保证切点可定位、数量可执行，再考虑补充说明字段。`
+            : '';
 
-        return `${getLanguagePrefix()}你是“章节切分助手”。你的任务只有一个：为本章生成可执行的切分策略 JSON，用于后续代码按锚点切分原文。\n\n硬规则（必须遵守）：\n1) 只输出 JSON，不要代码块，不要解释。\n2) beat_count 必须在 3-8。\n3) split_points 表示“切分点”，数量必须等于 beat_count - 1。\n4) 每个 split_point 必须包含 anchor（原文中的精确子串，长度${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN}字），用于定位切分刀口。\n5) 每个 split_point 必须包含 split_rule 对象：{ primary, matched }，且 primary 必须在 matched 里。\n6) hint 仅用于解释该切分点前后发生了什么，不能大段照抄原文。\n\n切分类型枚举（split_rule.primary / matched 只能从以下选择）：\n- scene_switch：场景或时空发生明确切换。示例：从客栈切到街巷追逐。\n- action_closed：关键动作链条完成并得到结果。示例：破门→夺物→撤离完成。\n- dialogue_closed：核心对话话题形成阶段性结论。示例：谈判达成/彻底谈崩。\n- plot_twist：改变后续走向的新信息或突发事件出现。示例：同伴暴露身份。\n- perspective_switch：叙事视角切换到另一角色线。示例：主角线切到反派线。\n- interaction_point：天然适合玩家做选择或行动介入的节点。示例：门前二选一行动。\n\n分割原则（来自需求）：\n- 六铁则用于识别切分候选。\n- 防碎片：同目的不重复切分；300字内密集信号合并。\n- 冲突优先级：plot_twist > perspective_switch > scene_switch > interaction_point > action_closed/dialogue_closed。\n- 防剧透：每个节拍只覆盖自身剧情，不泄露后续核心事件。\n\n输出 JSON 模板（字段名必须一致）：\n{\n  "outline": "章节摘要（1-2句）",\n  "beat_count": 5,\n  "split_points": [\n    {\n      "anchor": "这里放原文中的精确子串（${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN}字）",\n      "hint": "这个切分点前后发生了什么",\n      "split_rule": {\n        "primary": "scene_switch",\n        "matched": ["scene_switch", "interaction_point"]\n      }\n    }\n  ]\n}\n\n章节标题：${chapterTitle}${previousOutline}\n\n章节正文（仅供分析与截取 anchor，不要抄整段原文）：\n---\n${memory.content}\n---`;
+        return `${getLanguagePrefix()}你是“切分定位器”。第一目标只有一个：把章节切在最正确的位置。\n\n只做一件事：给出每个切分点在正文中的 anchor（精确子串）。\n\n优先级（从高到低）：\n- P0：anchor 位置正确，必须贴合剧情节拍变化点。\n- P1：anchor 是正文可定位的精确子串。\n- P2：其他说明字段尽量简短。\n\n强约束：\n1) 只输出 JSON，不要代码块，不要解释。\n2) 必须输出 split_points 数组。\n3) 每个 split_point 至少提供 anchor。\n4) anchor 要尽量靠近自然句尾，且不要落在引号/括号内部。\n5) anchor 建议长度 ${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN} 字；如果确实找不到合适长锚，可略短。${retryBlock}\n\n输出 JSON 模板：\n{\n  "outline": "可选，1句概括",\n  "split_points": [\n    {\n      "anchor": "正文中的精确子串（核心字段）",\n      "event_summary": "可选",\n      "split_reason": "可选",\n      "self_check": "可选，自检一句话",\n      "split_rule": {\n        "primary": "goal_shift",\n        "rationale": "可选"\n      }\n    }\n  ]\n}\n\n章节标题：${chapterTitle}${previousOutline}\n\n章节正文（只用于定位 anchor）：\n---\n${memory.content}\n---`;
     }
 
     async function generateChapterAssets(index, options = {}) {
@@ -1373,7 +1794,6 @@
         memory.chapterOutlineError = '';
         updateMemoryQueueUI();
 
-        const prompt = buildChapterAssetsPrompt(memory, index);
         let lastError = null;
         const chapterAssetsCaller = typeof callDirectorAPI === 'function' ? callDirectorAPI : callAPI;
         const commitAssets = (assets, source = '导演API') => {
@@ -1398,6 +1818,8 @@
         for (let attempt = 0; attempt <= contractRetryLimit; attempt++) {
             try {
                 throwIfRunInactive(runId);
+                const retryHint = attempt > 0 && lastError ? compactErrorMessage(lastError) : '';
+                const prompt = buildChapterAssetsPrompt(memory, index, retryHint);
                 updateStreamContent(`🧭 [第${index + 1}章][导演API] 发起章节资产请求（尝试 ${attempt + 1}/${contractRetryLimit + 1}）\n`);
                 const response = await runWithApiSemaphore('director', runId, async () => chapterAssetsCaller(prompt, taskId));
                 throwIfRunInactive(runId);
@@ -1418,7 +1840,7 @@
                 const isSplitError = error?.code === 'CHAPTER_ASSETS_SPLIT' || error?.code === 'CHAPTER_ASSETS_VALIDATION';
 
                 if (isContractError && error?.detail?.splitPointIndex) {
-                    updateStreamContent(`ℹ️ [第${index + 1}章][导演API] 契约诊断: split_point[${error.detail.splitPointIndex}] 字段异常，请检查 anchor/split_rule\n`);
+                    updateStreamContent(`ℹ️ [第${index + 1}章][导演API] 契约诊断: split_point[${error.detail.splitPointIndex}] 重点检查 anchor 是否可定位\n`);
                 }
 
                 const canRetry = shouldRetryError(error);
