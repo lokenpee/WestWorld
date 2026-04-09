@@ -366,6 +366,7 @@
         return {
             primary,
             matched: matched.slice(0, 8),
+            rationale: String(source.rationale || source.reason || '').trim(),
         };
     }
 
@@ -385,6 +386,8 @@
             id: String(source.id || `b${idx + 1}`).trim() || `b${idx + 1}`,
             summary: summary || `事件点${idx + 1}`,
             exitCondition: exitCondition || '等待用户行动或关键互动完成',
+            eventSummary: String(source.eventSummary || source.event_summary || '').trim(),
+            splitReason: String(source.splitReason || source.split_reason || '').trim(),
             tags,
             original_text: originalText,
             split_rule: splitRule,
@@ -741,8 +744,11 @@
             const splitRule = normalizeStrategySplitRule(point?.split_rule, splitType);
             return normalizeBeatItem({
                 id: `b${idx + 1}`,
-                summary,
-                exitCondition: '该段核心行动完成，或出现新的互动焦点。',
+                summary: point?.event_summary || summary,
+                exitCondition: point?.exit_condition || '该段核心行动完成，或出现新的互动焦点。',
+                eventSummary: point?.event_summary || '',
+                splitReason: point?.split_reason || '',
+                hint: point?.hint || '',
                 tags,
                 original_text: seg,
                 split_rule: splitRule,
@@ -933,6 +939,43 @@
         return expected;
     }
 
+    function validateCutAtNaturalBoundary(content, cutPos) {
+        const charBeforeCut = content[cutPos - 1];
+        const charAfterCut = content[cutPos];
+        const naturalBoundaries = new Set(['。', '！', '？', '\n', '；']);
+        
+        if (naturalBoundaries.has(charBeforeCut)) {
+            return { valid: true, pos: cutPos };
+        }
+        
+        if (charAfterCut === '，' || charAfterCut === '、' || charAfterCut === '：' || charAfterCut === '；') {
+            return { 
+                valid: false, 
+                reason: '切在标点中间',
+                pos: cutPos
+            };
+        }
+        
+        return { valid: true, pos: cutPos };
+    }
+
+    function findNearestSentenceBoundary(content, targetPos, maxOffset = 100) {
+        const boundaries = ['。', '！', '？', '\n', '；'];
+        
+        for (let offset = 0; offset <= maxOffset; offset++) {
+            const afterPos = targetPos + offset;
+            if (afterPos < content.length && boundaries.includes(content[afterPos])) {
+                return afterPos + 1;
+            }
+            const beforePos = targetPos - offset - 1;
+            if (beforePos >= 0 && boundaries.includes(content[beforePos])) {
+                return beforePos + 1;
+            }
+        }
+        
+        return null;
+    }
+
     function applySplitStrategyWithAnchors(content, strategy = {}, chapterIndex = 1) {
         const source = String(content || '');
         if (!source.trim()) return null;
@@ -1000,6 +1043,21 @@
                 });
             }
 
+            const boundaryCheck = validateCutAtNaturalBoundary(source, foundAt);
+            if (!boundaryCheck.valid) {
+                const adjustedPos = findNearestSentenceBoundary(source, foundAt, 100);
+                if (adjustedPos && adjustedPos > (anchorStarts[i - 1] || 0)) {
+                    updateStreamContent(`⚠️ [第${chapterIndex}章] 锚点${i + 1}不在句子边界，已自动修正\n`);
+                    foundAt = adjustedPos;
+                } else {
+                    throw createChapterAssetsContractError(chapterIndex - 1, `第${i + 1}个锚点位于句子中间，破坏事件完整性`, {
+                        splitPointIndex: i + 1,
+                        anchor,
+                        reason: boundaryCheck.reason,
+                    });
+                }
+            }
+            
             anchorStarts.push(foundAt);
             searchCursor = Math.max(foundAt + 1, foundAt + Math.floor(anchor.length / 2));
         }
@@ -1336,7 +1394,8 @@
         const previousMemory = index > 0 ? AppState.memory.queue[index - 1] : null;
         const previousOutline = previousMemory?.chapterOutline ? `\n上一章摘要：${previousMemory.chapterOutline}` : '';
 
-        return `${getLanguagePrefix()}你是“章节切分助手”。你的任务只有一个：为本章生成可执行的切分策略 JSON，用于后续代码按锚点切分原文。\n\n硬规则（必须遵守）：\n1) 只输出 JSON，不要代码块，不要解释。\n2) beat_count 必须在 3-8。\n3) split_points 表示“切分点”，数量必须等于 beat_count - 1。\n4) 每个 split_point 必须包含 anchor（原文中的精确子串，长度${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN}字），用于定位切分刀口。\n5) 每个 split_point 必须包含 split_rule 对象：{ primary, matched }，且 primary 必须在 matched 里。\n6) hint 仅用于解释该切分点前后发生了什么，不能大段照抄原文。\n\n切分类型枚举（split_rule.primary / matched 只能从以下选择）：\n- scene_switch：场景或时空发生明确切换。示例：从客栈切到街巷追逐。\n- action_closed：关键动作链条完成并得到结果。示例：破门→夺物→撤离完成。\n- dialogue_closed：核心对话话题形成阶段性结论。示例：谈判达成/彻底谈崩。\n- plot_twist：改变后续走向的新信息或突发事件出现。示例：同伴暴露身份。\n- perspective_switch：叙事视角切换到另一角色线。示例：主角线切到反派线。\n- interaction_point：天然适合玩家做选择或行动介入的节点。示例：门前二选一行动。\n\n分割原则（来自需求）：\n- 六铁则用于识别切分候选。\n- 防碎片：同目的不重复切分；300字内密集信号合并。\n- 冲突优先级：plot_twist > perspective_switch > scene_switch > interaction_point > action_closed/dialogue_closed。\n- 防剧透：每个节拍只覆盖自身剧情，不泄露后续核心事件。\n\n输出 JSON 模板（字段名必须一致）：\n{\n  "outline": "章节摘要（1-2句）",\n  "beat_count": 5,\n  "split_points": [\n    {\n      "anchor": "这里放原文中的精确子串（${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN}字）",\n      "hint": "这个切分点前后发生了什么",\n      "split_rule": {\n        "primary": "scene_switch",\n        "matched": ["scene_switch", "interaction_point"]\n      }\n    }\n  ]\n}\n\n章节标题：${chapterTitle}${previousOutline}\n\n章节正文（仅供分析与截取 anchor，不要抄整段原文）：\n---\n${memory.content}\n---`;
+        return `${getLanguagePrefix()}你是“章节切分助手”。你的任务只有一个：为本章生成可执行的切分策略 JSON，用于后续代码按锚点切分原文。\n\n硬规则（必须遵守）：\n1) 只输出 JSON，不要代码块，不要解释。\n2) beat_count 必须在 3-8。\n3) split_points 表示“切分点”，数量必须等于 beat_count - 1。\n4) 每个 split_point 必须包含 anchor（原文中的精确子串，长度${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN}字），用于定位切分刀口。\n5) 每个 split_point 必须包含 split_rule 对象：{ primary, rationale }，rationale 是选择此规则的理由。\n6) 必须包含 event_summary（本节拍事件摘要，≤50字）、exit_condition（退出条件，具体可执行）、split_reason（切分理由，≤100字）。\n\n切分类型枚举（split_rule.primary / matched 只能从以下选择）：\n- scene_switch：场景或时空发生明确切换。示例：从客栈切到街巷追逐。\n- action_closed：关键动作链条完成并得到结果。示例：破门→夺物→撤离完成。\n- dialogue_closed：核心对话话题形成阶段性结论。示例：谈判达成/彻底谈崩。\n- plot_twist：改变后续走向的新信息或突发事件出现。示例：同伴暴露身份。\n- perspective_switch：叙事视角切换到另一角色线。示例：主角线切到反派线。\n- interaction_point：天然适合玩家做选择或行动介入的节点。示例：门前二选一行动。\n\n分割原则（来自需求）：\n- 六铁则用于识别切分候选。\n- 防碎片：同目的不重复切分；300字内密集信号合并。
+- 事件完整性：一个完整事件不能从中间切开。\n- 冲突优先级：plot_twist > perspective_switch > scene_switch > interaction_point > action_closed/dialogue_closed。\n- 防剧透：每个节拍只覆盖自身剧情，不泄露后续核心事件。\n\n输出 JSON 模板（字段名必须一致）：\n{\n  "outline": "章节摘要（1-2句）",\n  "beat_count": 5,\n  "split_points": [\n    {\n      "anchor": "原文中的精确子串（必须在句子边界）（${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN}字）",\n      "hint": "这个切分点前后发生了什么",\n      "split_rule": {\n        "primary": "scene_switch",\n        "rationale": "选择此规则的理由"\n      }\n    }\n  ]\n}\n\n章节标题：${chapterTitle}${previousOutline}\n\n章节正文（仅供分析与截取 anchor，不要抄整段原文）：\n---\n${memory.content}\n---`;
     }
 
     async function generateChapterAssets(index, options = {}) {

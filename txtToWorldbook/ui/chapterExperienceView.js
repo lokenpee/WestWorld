@@ -401,27 +401,33 @@ export function createChapterExperienceView(deps = {}) {
                 const splitRule = beat.split_rule && typeof beat.split_rule === 'object'
                     ? beat.split_rule
                     : normalizeSplitRule({});
-                const splitRuleMatched = Array.isArray(splitRule.matched)
-                    ? splitRule.matched.map((rule) => String(rule || '').trim()).filter(Boolean)
-                    : [];
-                const ruleText = splitRuleMatched.length > 0
-                    ? `主导规则：${splitRule.primary} ｜ 命中：${splitRuleMatched.join('、')}`
-                    : `主导规则：${splitRule.primary}`;
+                const splitRationale = splitRule.rationale || '';
+                const ruleText = splitRationale
+                    ? `${splitRule.primary}（${splitRationale}）`
+                    : splitRule.primary;
                 const originalText = typeof beat.original_text === 'string' ? beat.original_text : '';
+                const eventSummary = beat.eventSummary || beat.summary || '';
+                const exitCondition = beat.exitCondition || '等待关键互动完成';
+                const splitReason = beat.splitReason || '';
+                const hint = beat.hint || '';
+                
                 const detailsHtml = `<details class="ttw-beat-details">
-    <summary class="ttw-beat-details-summary">查看原文与切分规则</summary>
+    <summary class="ttw-beat-details-summary">📖 查看原文</summary>
     <div class="ttw-beat-details-body">
-        <div class="ttw-beat-rule">${escapeHtml(ruleText)}</div>
         <div class="ttw-beat-original">${escapeHtml(originalText || '暂无该节拍原文（旧数据或生成异常）。')}</div>
     </div>
 </details>`;
+                
                 return `<div class="ttw-beat-item ${isActive ? 'is-active' : ''}">
     <div class="ttw-beat-item-head">
         <span class="ttw-beat-id">${escapeHtml(beat.id || `b${idx + 1}`)}</span>
         ${isActive ? '<span class="ttw-beat-active">当前阶段</span>' : ''}
     </div>
-    <div class="ttw-beat-summary">${escapeHtml(beat.summary || '')}</div>
-    <div class="ttw-beat-exit">退出条件：${escapeHtml(beat.exitCondition || '等待关键互动完成')}</div>
+    <div class="ttw-beat-event">📖 事件：${escapeHtml(eventSummary)}</div>
+    <div class="ttw-beat-exit">🎯 退出条件：${escapeHtml(exitCondition)}</div>
+    ${splitReason ? `<div class="ttw-beat-reason">✂️ 切分理由：${escapeHtml(splitReason)}</div>` : ''}
+    ${hint ? `<div class="ttw-beat-hint">💡 提示：${escapeHtml(hint)}</div>` : ''}
+    <div class="ttw-beat-rule">🏷️ 规则：${escapeHtml(ruleText)}</div>
     ${tagsHtml}
     ${detailsHtml}
 </div>`;
