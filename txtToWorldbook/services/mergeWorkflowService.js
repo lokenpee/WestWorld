@@ -65,7 +65,7 @@ export function createMergeWorkflowService(deps = {}) {
         const preCleanedContent = dedupeStructuredContent(entry['内容']);
 
         const template = (promptTemplate && promptTemplate.trim()) ? promptTemplate.trim() : defaultConsolidatePrompt;
-        const prompt = `${template.replace('{CONTENT}', preCleanedContent)}\n\n【强制输出要求】\n1. 去重目标是“字段重复”，不是删减事实。\n2. 同字段同内容只保留一份，禁止重复输出。\n3. 同字段不同内容必须融合保留，不得覆盖或遗漏。\n4. 尽量采用“字段: 值”的结构化格式输出。\n5. 不要输出解释文字，只输出整理后的正文。`;
+        const prompt = `${template.replace('{CONTENT}', preCleanedContent)}\n\n【墨韵 - 强制输出要求】\n1. 字段去重：同一字段名只出现一次，重复内容合并为一条。\n2. 信息融合：同一字段的不同描述需要你自己融合为一个内容只能多，不能精简。\n3. 格式规范：使用 "**字段名**: 内容" 结构化格式。\n4. 零解释：禁止输出思考过程、代码块、JSON格式，只输出整理后的正文。`;
         let response = await callAPI(getLanguagePrefix() + prompt);
 
         response = filterResponseContent(response);
