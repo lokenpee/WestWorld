@@ -1203,10 +1203,62 @@ export function createMergeWorkflowService(deps = {}) {
         return mergedService.mergeConfirmedDuplicates(aiResult, categoryName);
     }
 
+    function deleteWorldbookEntry(category, entryName) {
+        const normalizedCategory = String(category || '').trim();
+        const normalizedEntryName = String(entryName || '').trim();
+
+        if (!normalizedCategory || !normalizedEntryName) {
+            return { success: false, error: '删除失败：分类或条目名为空' };
+        }
+
+        const resolved = mergedService.resolveDisplayedEntrySource(normalizedCategory, normalizedEntryName);
+        if (!resolved) {
+            return { success: false, error: `删除失败：未找到条目「${normalizedEntryName}」` };
+        }
+
+        let sourceEntries = null;
+        if (resolved.sourceType === 'generated') {
+            sourceEntries = AppState.worldbook.generated?.[normalizedCategory];
+        } else if (resolved.sourceType === 'volume' && Number.isInteger(resolved.volumeIndex)) {
+            const volume = (AppState.worldbook.volumes || []).find((item) => item.volumeIndex === resolved.volumeIndex);
+            sourceEntries = volume?.worldbook?.[normalizedCategory];
+        }
+
+        if (!sourceEntries || !sourceEntries[resolved.actualName]) {
+            return { success: false, error: `删除失败：源数据中不存在「${normalizedEntryName}」` };
+        }
+
+        delete sourceEntries[resolved.actualName];
+
+        if (resolved.sourceType === 'generated') {
+            const positionMap = AppState.config?.entryPosition;
+            if (positionMap && typeof positionMap === 'object') {
+                const configKey = `${normalizedCategory}::${resolved.actualName}`;
+                if (Object.prototype.hasOwnProperty.call(positionMap, configKey)) {
+                    delete positionMap[configKey];
+                }
+            }
+        }
+
+        Logger.info(
+            'WorldbookDelete',
+            `删除条目: [${normalizedCategory}] ${resolved.actualName} (source=${resolved.sourceType}${resolved.sourceType === 'volume' ? `#${resolved.volumeIndex + 1}` : ''})`
+        );
+
+        return {
+            success: true,
+            category: normalizedCategory,
+            entryName: resolved.actualName,
+            sourceType: resolved.sourceType,
+            sourceVolumeIndex: resolved.sourceType === 'volume' ? resolved.volumeIndex : AppState.worldbook.currentVolumeIndex,
+        };
+    }
+
     return {
         showConsolidateCategorySelector,
         showManualMergeUI,
         showAliasMergeUI,
+        deleteWorldbookEntry,
         verifyDuplicatesWithAI,
         mergeConfirmedDuplicates,
     };

@@ -29,7 +29,31 @@
         deleteWorldbookEntry,
     } = deps;
 
-    function formatWorldbookAsCards(worldbook) {
+    const batchDeleteState = {
+        enabled: false,
+        selectedKeys: new Set(),
+    };
+
+    function buildEntrySelectionKey(category, entryName) {
+        return JSON.stringify([String(category || ''), String(entryName || '')]);
+    }
+
+    function parseEntrySelectionKey(key) {
+        try {
+            const parsed = JSON.parse(String(key || ''));
+            if (!Array.isArray(parsed) || parsed.length !== 2) return null;
+            return { category: String(parsed[0] || ''), entryName: String(parsed[1] || '') };
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function formatWorldbookAsCards(worldbook, options = {}) {
+        const {
+            batchDeleteMode = false,
+            selectedEntryKeys = null,
+        } = options;
+
         if (!worldbook || Object.keys(worldbook).length === 0) {
             return '<div style="text-align:center;color:#888;padding:20px;">暂无世界书数据</div>';
         }
@@ -80,6 +104,7 @@
                 const isManualMergedHighlight = !!mergeHighlight
                     && mergeHighlight.category === category
                     && mergeHighlight.entryName === entryName;
+                const selectionKey = buildEntrySelectionKey(category, entryName);
 
                 return ListRenderer.renderWorldbookEntry(category, entryName, entry, {
                     safeCategoryAttr,
@@ -89,6 +114,8 @@
                     entryTokens,
                     isBelowThreshold,
                     isManualMergedHighlight,
+                    batchDeleteMode,
+                    isSelectedForBatchDelete: !!selectedEntryKeys?.has(selectionKey),
                     searchKeyword: getSearchKeyword(),
                 });
             }).join('');
@@ -218,32 +245,166 @@
                 return;
             }
 
+            batchDeleteState.selectedKeys.delete(buildEntrySelectionKey(category, entryName));
+
             updateWorldbookPreview();
             const viewModal = document.getElementById('ttw-worldbook-view-modal');
             if (viewModal) {
                 const bodyContainer = viewModal.querySelector('#ttw-worldbook-view-body');
                 if (bodyContainer) {
-                    renderWorldbookToContainer(bodyContainer, getWorldbookToShow());
+                    renderWorldbookToContainer(bodyContainer, getWorldbookToShow(), getViewRenderOptions());
                 }
+                syncBatchDeleteUi(viewModal);
             }
         });
+    }
+
+    function bindEntryBatchSelectionEvents(container) {
+        if (container.dataset.ttwEntryBatchSelectionBound === 'true') return;
+        container.dataset.ttwEntryBatchSelectionBound = 'true';
+
+        EventDelegate.on(container, '.ttw-entry-select-btn', 'click', (e, btn) => {
+            e.stopPropagation();
+            if (!batchDeleteState.enabled) return;
+
+            const category = btn.dataset.category;
+            const entryName = btn.dataset.entry;
+            if (!category || !entryName) return;
+
+            const key = buildEntrySelectionKey(category, entryName);
+            if (batchDeleteState.selectedKeys.has(key)) {
+                batchDeleteState.selectedKeys.delete(key);
+            } else {
+                batchDeleteState.selectedKeys.add(key);
+            }
+
+            refreshWorldbookViewModal();
+        });
+    }
+
+    function getViewRenderOptions() {
+        return {
+            batchDeleteMode: batchDeleteState.enabled,
+            selectedEntryKeys: batchDeleteState.selectedKeys,
+        };
+    }
+
+    function resetBatchDeleteState() {
+        batchDeleteState.enabled = false;
+        batchDeleteState.selectedKeys.clear();
+    }
+
+    function getSelectedBatchEntries() {
+        const result = [];
+        for (const key of batchDeleteState.selectedKeys) {
+            const parsed = parseEntrySelectionKey(key);
+            if (parsed && parsed.category && parsed.entryName) {
+                result.push(parsed);
+            }
+        }
+        return result;
+    }
+
+    function syncBatchDeleteUi(viewModal) {
+        if (!viewModal) return;
+
+        const toggleBtn = viewModal.querySelector('#ttw-batch-delete-toggle-btn');
+        const confirmBtn = viewModal.querySelector('#ttw-batch-delete-confirm-btn');
+        const statusEl = viewModal.querySelector('#ttw-batch-delete-status');
+        const selectedCount = batchDeleteState.selectedKeys.size;
+
+        if (toggleBtn) {
+            toggleBtn.textContent = batchDeleteState.enabled ? '✅ 退出多选' : '🧺 多选删除';
+        }
+
+        if (confirmBtn) {
+            confirmBtn.style.display = batchDeleteState.enabled ? 'inline-flex' : 'none';
+            confirmBtn.disabled = selectedCount <= 0;
+            confirmBtn.textContent = selectedCount > 0
+                ? `🗑️ 删除已选 (${selectedCount})`
+                : '🗑️ 删除已选';
+        }
+
+        if (statusEl) {
+            statusEl.textContent = batchDeleteState.enabled
+                ? (selectedCount > 0 ? `已选 ${selectedCount} 条` : '多选模式：点击条目标题左侧☑️进行选择')
+                : '单条删除：点击每条右侧🗑️';
+        }
+    }
+
+    async function handleBatchDeleteSelected(viewModal) {
+        const selectedEntries = getSelectedBatchEntries();
+        if (selectedEntries.length === 0) {
+            window.alert('请先选择要删除的条目');
+            return;
+        }
+
+        const previewList = selectedEntries
+            .slice(0, 8)
+            .map((item) => `- [${item.category}] ${item.entryName}`)
+            .join('\n');
+        const remainCount = selectedEntries.length > 8 ? `\n...其余 ${selectedEntries.length - 8} 条省略` : '';
+        const confirmMessage = `确定批量删除 ${selectedEntries.length} 个条目？\n\n${previewList}${remainCount}\n\n⚠️ 删除后不可恢复（除非你回滚历史）。`;
+
+        let shouldDelete = false;
+        if (typeof confirmAction === 'function') {
+            shouldDelete = await confirmAction(confirmMessage, { title: '批量删除世界书条目', danger: true });
+        } else {
+            shouldDelete = window.confirm(confirmMessage);
+        }
+        if (!shouldDelete) return;
+
+        let successCount = 0;
+        const failedItems = [];
+        for (const item of selectedEntries) {
+            const result = typeof deleteWorldbookEntry === 'function'
+                ? deleteWorldbookEntry(item.category, item.entryName)
+                : { success: false, error: '删除功能未初始化' };
+
+            if (result?.success) {
+                successCount++;
+                batchDeleteState.selectedKeys.delete(buildEntrySelectionKey(item.category, item.entryName));
+            } else {
+                failedItems.push({ ...item, error: result?.error || '删除失败' });
+            }
+        }
+
+        if (successCount > 0) {
+            updateWorldbookPreview();
+            refreshWorldbookViewModal();
+        } else {
+            syncBatchDeleteUi(viewModal);
+        }
+
+        if (failedItems.length > 0) {
+            const failedText = failedItems
+                .slice(0, 5)
+                .map((item) => `[${item.category}] ${item.entryName}: ${item.error}`)
+                .join('\n');
+            window.alert(`批量删除完成：成功 ${successCount}，失败 ${failedItems.length}\n\n${failedText}`);
+            return;
+        }
+
+        window.alert(`批量删除完成：成功删除 ${successCount} 条`);
     }
 
     function renderWorldbookToContainer(container, worldbook, options = {}) {
         if (!container) return;
         const { headerInfo = '' } = options;
-        const html = `${headerInfo}${formatWorldbookAsCards(worldbook)}`;
+        const html = `${headerInfo}${formatWorldbookAsCards(worldbook, options)}`;
         ListRenderer.updateContainer(container, html);
         bindLightToggleEvents(container);
         bindConfigButtonEvents(container);
         bindEntryRerollEvents(container);
         bindEntryDeleteEvents(container);
+        bindEntryBatchSelectionEvents(container);
         bindWorldbookCollapseEvents(container);
     }
 
     function showWorldbookView() {
         const existingModal = document.getElementById('ttw-worldbook-view-modal');
         if (existingModal) existingModal.remove();
+        resetBatchDeleteState();
 
         const worldbookToShow = getWorldbookToShow();
         const titleSuffix = isVolumeMode() ? ` (${getVolumeCount()}卷合并)` : '';
@@ -260,6 +421,9 @@
 
         const footerHtml = `
             <div style="font-size:11px;color:#888;margin-right:auto;">💡 点击⚙️配置，🎯单独重Roll，🗑️删除条目，点击灯图标切换蓝/绿灯</div>
+            <span id="ttw-batch-delete-status" style="font-size:11px;color:#aab2bd;white-space:nowrap;">单条删除：点击每条右侧🗑️</span>
+            <button class="ttw-btn ttw-btn-secondary" id="ttw-batch-delete-toggle-btn" title="启用多选后可批量删除条目" style="white-space:nowrap;flex-shrink:0;">🧺 多选删除</button>
+            <button class="ttw-btn ttw-btn-warning" id="ttw-batch-delete-confirm-btn" title="删除当前已选条目" style="display:none;white-space:nowrap;flex-shrink:0;">🗑️ 删除已选</button>
             <button class="ttw-btn ttw-btn-secondary" id="ttw-manual-merge-btn" title="手动选择条目进行合并（AI识别不到时使用）" style="white-space:nowrap;flex-shrink:0;">✋ 手动合并</button>
             <button class="ttw-btn ttw-btn-secondary" id="ttw-batch-reroll-btn" title="批量选择多个条目重Roll" style="white-space:nowrap;flex-shrink:0;">🎲 批量重Roll</button>
         `;
@@ -275,22 +439,37 @@
         viewModal.querySelector('#ttw-manual-merge-btn').addEventListener('click', () => {
             showManualMergeUI(() => {
                 const bodyContainer = viewModal.querySelector('#ttw-worldbook-view-body');
-                renderWorldbookToContainer(bodyContainer, getWorldbookToShow());
+                renderWorldbookToContainer(bodyContainer, getWorldbookToShow(), getViewRenderOptions());
+                syncBatchDeleteUi(viewModal);
             });
         });
 
         viewModal.querySelector('#ttw-batch-reroll-btn').addEventListener('click', () => {
             showBatchRerollModal(() => {
                 const bodyContainer = viewModal.querySelector('#ttw-worldbook-view-body');
-                renderWorldbookToContainer(bodyContainer, getWorldbookToShow());
+                renderWorldbookToContainer(bodyContainer, getWorldbookToShow(), getViewRenderOptions());
+                syncBatchDeleteUi(viewModal);
             });
+        });
+
+        viewModal.querySelector('#ttw-batch-delete-toggle-btn').addEventListener('click', () => {
+            batchDeleteState.enabled = !batchDeleteState.enabled;
+            if (!batchDeleteState.enabled) {
+                batchDeleteState.selectedKeys.clear();
+            }
+            refreshWorldbookViewModal();
+        });
+
+        viewModal.querySelector('#ttw-batch-delete-confirm-btn').addEventListener('click', async () => {
+            await handleBatchDeleteSelected(viewModal);
         });
 
         viewModal.querySelector('#ttw-apply-threshold').addEventListener('click', () => {
             const input = viewModal.querySelector('#ttw-token-threshold-input');
             setTokenThreshold(parseInt(input.value, 10) || 0);
             const bodyContainer = viewModal.querySelector('#ttw-worldbook-view-body');
-            renderWorldbookToContainer(bodyContainer, getWorldbookToShow());
+            renderWorldbookToContainer(bodyContainer, getWorldbookToShow(), getViewRenderOptions());
+            syncBatchDeleteUi(viewModal);
         });
 
         viewModal.querySelector('#ttw-token-threshold-input').addEventListener('keydown', (e) => {
@@ -299,7 +478,8 @@
             }
         });
 
-        renderWorldbookToContainer(viewModal.querySelector('#ttw-worldbook-view-body'), worldbookToShow);
+        renderWorldbookToContainer(viewModal.querySelector('#ttw-worldbook-view-body'), worldbookToShow, getViewRenderOptions());
+        syncBatchDeleteUi(viewModal);
     }
 
     function getWorldbookPreviewHeaderInfo() {
@@ -314,7 +494,8 @@
         if (!viewModal) return;
         const bodyContainer = viewModal.querySelector('#ttw-worldbook-view-body');
         if (!bodyContainer) return;
-        renderWorldbookToContainer(bodyContainer, getWorldbookToShow());
+        renderWorldbookToContainer(bodyContainer, getWorldbookToShow(), getViewRenderOptions());
+        syncBatchDeleteUi(viewModal);
     }
 
     function updateWorldbookPreview() {
