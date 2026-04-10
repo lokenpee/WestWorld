@@ -544,7 +544,7 @@ export function buildModalHtml() {
     return `
     <div class="ttw-modal">
         <div class="ttw-modal-header">
-            <span class="ttw-modal-title">📚 TXT转世界书 <span style="font-size:12px;opacity:0.7;font-weight:normal;">v2.6</span></span>
+            <span class="ttw-modal-title">📚 TXT转世界书 <span style="font-size:12px;opacity:0.7;font-weight:normal;">v2.6.1</span></span>
             <div class="ttw-header-actions">
                 <span class="ttw-help-btn" title="帮助">❓</span>
                 <button class="ttw-modal-close" type="button">✕</button>
