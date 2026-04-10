@@ -214,6 +214,96 @@ export function createParserService(deps = {}) {
         debugLog(`解析响应开始, 响应长度=${rawResponse.length}字符, strict=${strict}`);
 
         const directText = filterResponseContent(rawResponse).trim();
+        const maybeParseJson = (input) => {
+            const body = String(input || '').trim();
+            if (!body) return { ok: false, error: new Error('empty') };
+            const variants = [
+                body,
+                body.replace(/^\uFEFF/, ''),
+                body.replace(/,\s*([}\]])/g, '$1'),
+            ];
+            for (const item of variants) {
+                try {
+                    return { ok: true, value: JSON.parse(item) };
+                } catch (error) {
+                    // try next variant
+                }
+            }
+            return { ok: false, error: new Error('invalid json') };
+        };
+
+        const collectFencedBlocks = (text, limit = 6) => {
+            const source = String(text || '');
+            const blocks = [];
+            const fenceRegex = /```(?:json)?\s*([\s\S]*?)```/ig;
+            let match;
+            while ((match = fenceRegex.exec(source)) !== null) {
+                blocks.push(String(match[1] || '').trim());
+                if (blocks.length >= limit) break;
+            }
+            return blocks;
+        };
+
+        const collectBalancedJsonObjects = (text, limit = 20) => {
+            const source = String(text || '');
+            const out = [];
+            let depth = 0;
+            let start = -1;
+            let inString = false;
+            let escaped = false;
+
+            for (let i = 0; i < source.length; i++) {
+                const ch = source[i];
+
+                if (inString) {
+                    if (escaped) {
+                        escaped = false;
+                        continue;
+                    }
+                    if (ch === '\\') {
+                        escaped = true;
+                        continue;
+                    }
+                    if (ch === '"') {
+                        inString = false;
+                    }
+                    continue;
+                }
+
+                if (ch === '"') {
+                    inString = true;
+                    continue;
+                }
+
+                if (ch === '{') {
+                    if (depth === 0) start = i;
+                    depth++;
+                    continue;
+                }
+
+                if (ch === '}') {
+                    if (depth > 0) depth--;
+                    if (depth === 0 && start >= 0) {
+                        out.push(source.slice(start, i + 1));
+                        start = -1;
+                        if (out.length >= limit) break;
+                    }
+                }
+            }
+
+            return out;
+        };
+
+        const buildParseError = (message) => {
+            const error = new Error(message);
+            error.detail = {
+                rawResponse,
+                rawLength: rawResponse.length,
+                rawPreview: directText.slice(0, 280).replace(/\s+/g, ' '),
+            };
+            return error;
+        };
+
         const tryParse = (input) => {
             try {
                 return { ok: true, value: JSON.parse(input) };
@@ -222,20 +312,33 @@ export function createParserService(deps = {}) {
             }
         };
 
-        const directResult = tryParse(directText);
+        const directResult = maybeParseJson(directText);
         if (directResult.ok) return normalizeParsedWorldbookData(directResult.value);
+
+        const fencedBlocks = collectFencedBlocks(rawResponse);
+        for (const block of fencedBlocks) {
+            const blockResult = maybeParseJson(filterResponseContent(block));
+            if (blockResult.ok) return normalizeParsedWorldbookData(blockResult.value);
+        }
+
+        const balancedCandidates = collectBalancedJsonObjects(directText)
+            .sort((a, b) => b.length - a.length);
+        for (const candidate of balancedCandidates) {
+            const candidateResult = maybeParseJson(candidate);
+            if (candidateResult.ok) return normalizeParsedWorldbookData(candidateResult.value);
+        }
 
         let fenced = directText.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
         const first = fenced.indexOf('{');
         const last = fenced.lastIndexOf('}');
         if (first !== -1 && last > first) fenced = fenced.substring(first, last + 1);
 
-        const fencedResult = tryParse(fenced);
+        const fencedResult = maybeParseJson(fenced);
         if (fencedResult.ok) return normalizeParsedWorldbookData(fencedResult.value);
 
         if (strict) {
             const summary = directText.slice(0, 200).replace(/\s+/g, ' ');
-            throw new Error(`JSON解析失败（严格模式）。请检查模型输出是否为完整JSON。响应摘要: ${summary}${directText.length > 200 ? '...' : ''}`);
+            throw buildParseError(`JSON解析失败（严格模式）。请检查模型输出是否为完整JSON。响应摘要: ${summary}${directText.length > 200 ? '...' : ''}`);
         }
 
         try {
@@ -267,7 +370,7 @@ export function createParserService(deps = {}) {
         }
 
         const summary = directText.slice(0, 200).replace(/\s+/g, ' ');
-        throw new Error(`JSON修复失败。响应摘要: ${summary}${directText.length > 200 ? '...' : ''}`);
+        throw buildParseError(`JSON修复失败。响应摘要: ${summary}${directText.length > 200 ? '...' : ''}`);
     }
 
     return {

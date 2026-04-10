@@ -349,6 +349,9 @@
         if (typeof memory.chapterOutlineLastRawResponse !== 'string') {
             memory.chapterOutlineLastRawResponse = '';
         }
+        if (typeof memory.mainApiLastRawResponse !== 'string') {
+            memory.mainApiLastRawResponse = '';
+        }
         if (!memory.chapterScript || typeof memory.chapterScript !== 'object') {
             memory.chapterScript = { goal: '', flow: '', keyNodes: [], beats: [] };
         }
@@ -1981,6 +1984,7 @@
 
         ensureChapterRuntime(memory, index);
         memory.processing = true;
+        memory.mainApiLastRawResponse = '';
         updateMemoryQueueUI();
 
         const chapterForcePrompt = AppState.settings.forceChapterMarker ? getChapterForcePrompt(chapterIndex) : '';
@@ -2038,6 +2042,7 @@
 
                 debugLog(`[第${chapterIndex}章][主API] 解析AI响应...`);
                 let memoryUpdate = parseAIResponse(response, { strict: false });
+                memory.mainApiLastRawResponse = '';
 
                 debugLog(`[第${chapterIndex}章][主API] 后处理章节索引...`);
                 memoryUpdate = postProcessResultWithChapterIndex(memoryUpdate, chapterIndex);
@@ -2075,6 +2080,15 @@
 
             const brief = formatProcessingError(error, { chapterIndex, task: '主流程' });
             updateStreamContent(`❌ ${brief}\n`);
+
+            const rawMainResponse = typeof error?.detail?.rawResponse === 'string'
+                ? error.detail.rawResponse
+                : '';
+            if (rawMainResponse) {
+                memory.mainApiLastRawResponse = rawMainResponse;
+                const snippet = buildRawResponseDebugSnippet(rawMainResponse, 5000);
+                updateStreamContent(`🧾 [第${chapterIndex}章][主API] 原始响应片段（排查JSON失败）:\n---\n${snippet}\n---\n`);
+            }
 
             if (isTokenLimitError(error.message)) {
                 if (chapterAssetsPromise) chapterAssetsPromise.catch(() => null);
@@ -2203,6 +2217,7 @@ ${'='.repeat(50)}
         updateStreamContent(`📡 [第${chapterIndex}章] 已发起并行子任务：主API世界书 + 导演API章节资产\n`);
 
         memory.processing = true;
+        memory.mainApiLastRawResponse = '';
         updateMemoryQueueUI();
 
         const chapterForcePrompt = AppState.settings.forceChapterMarker ? getChapterForcePrompt(chapterIndex) : '';
@@ -2286,6 +2301,7 @@ ${'='.repeat(50)}
 
             debugLog(`[串行][第${chapterIndex}章] 解析AI响应...`);
             let memoryUpdate = parseAIResponse(response, { strict: false });
+            memory.mainApiLastRawResponse = '';
             memoryUpdate = postProcessResultWithChapterIndex(memoryUpdate, chapterIndex);
             updateStreamContent(`✅ [第${chapterIndex}章][主API] 世界书响应解析完成\n`);
 
@@ -2319,6 +2335,15 @@ ${'='.repeat(50)}
 
             const brief = formatProcessingError(error, { chapterIndex, task: '主流程' });
             updateStreamContent(`❌ ${brief}\n`);
+
+            const rawMainResponse = typeof error?.detail?.rawResponse === 'string'
+                ? error.detail.rawResponse
+                : '';
+            if (rawMainResponse) {
+                memory.mainApiLastRawResponse = rawMainResponse;
+                const snippet = buildRawResponseDebugSnippet(rawMainResponse, 5000);
+                updateStreamContent(`🧾 [第${chapterIndex}章][主API] 原始响应片段（排查JSON失败）:\n---\n${snippet}\n---\n`);
+            }
 
             if (isTokenLimitError(error.message || '')) {
                 if (AppState.processing.volumeMode) {
