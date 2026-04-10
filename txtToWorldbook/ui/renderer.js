@@ -176,6 +176,11 @@ export function createListRenderer(deps = {}) {
             const mergedBadge = isManualMergedHighlight
                 ? `<span style="font-size:10px;color:#f1c40f;background:rgba(241,196,15,0.2);border:1px solid rgba(241,196,15,0.45);padding:1px 6px;border-radius:999px;">✨ 新合并</span>`
                 : '';
+            const isBatchDeleteMode = !!context.batchDeleteMode;
+            const isSelectedForBatchDelete = !!context.isSelectedForBatchDelete;
+            const selectionBtn = isBatchDeleteMode
+                ? `<button class="ttw-entry-select-btn" data-category="${safeCategoryAttr}" data-entry="${safeEntryNameAttr}" title="${isSelectedForBatchDelete ? '取消选择' : '选择用于批量删除'}" style="background:${isSelectedForBatchDelete ? 'rgba(39,174,96,0.5)' : 'rgba(52,152,219,0.45)'};border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;color:#fff;">${isSelectedForBatchDelete ? '✅' : '☑️'}</button>`
+                : '';
             const roleType = this.getEntryRoleType(category, entry);
             const roleBadge = roleType
                 ? `<span style="font-size:10px;color:#2ecc71;background:rgba(46,204,113,0.16);border:1px solid rgba(46,204,113,0.5);padding:1px 6px;border-radius:999px;">${this.escapeHtml(roleType)}</span>`
@@ -201,10 +206,12 @@ export function createListRenderer(deps = {}) {
                     <div style="font-size:13px;">${formatEscapedMultilineContent(contentSource, context.searchKeyword || '', true)}</div>
                 </div>` : '';
 
+            const selectedOutline = isSelectedForBatchDelete ? 'box-shadow:inset 0 0 0 2px rgba(39,174,96,0.6);' : '';
+
             return `
-                <div class="${isManualMergedHighlight ? 'ttw-entry-merged-highlight' : ''}" style="margin:8px;border:1px solid #555;border-radius:6px;overflow:hidden;">
-                    <div class="ttw-entry-toggle" style="background:#3a3a3a;padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;${highlightStyle}">
-                        <span style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">${warningIcon}📄 ${safeEntryNameText}${roleBadge}${mergedBadge}<button class="ttw-entry-config-btn ttw-config-btn" data-category="${safeCategoryAttr}" data-entry="${safeEntryNameAttr}" title="配置位置/深度/顺序">⚙️</button><button class="ttw-entry-reroll-btn" data-category="${safeCategoryAttr}" data-entry="${safeEntryNameAttr}" title="单独重Roll此条目" style="background:rgba(155,89,182,0.4);border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;color:#fff;">🎯</button></span>
+                <div class="ttw-worldbook-entry-card ${isManualMergedHighlight ? 'ttw-entry-merged-highlight' : ''}" style="margin:8px;border:1px solid #555;border-radius:6px;overflow:hidden;${selectedOutline}">
+                    <div class="ttw-entry-toggle" data-category="${safeCategoryAttr}" data-entry="${safeEntryNameAttr}" style="background:#3a3a3a;padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;${highlightStyle}">
+                        <span style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">${warningIcon}📄 ${safeEntryNameText}${roleBadge}${mergedBadge}${selectionBtn}<button class="ttw-entry-config-btn ttw-config-btn" data-category="${safeCategoryAttr}" data-entry="${safeEntryNameAttr}" title="配置位置/深度/顺序">⚙️</button><button class="ttw-entry-reroll-btn" data-category="${safeCategoryAttr}" data-entry="${safeEntryNameAttr}" title="单独重Roll此条目" style="background:rgba(155,89,182,0.4);border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;color:#fff;">🎯</button><button class="ttw-entry-delete-btn" data-category="${safeCategoryAttr}" data-entry="${safeEntryNameAttr}" title="删除此条目" style="background:rgba(231,76,60,0.42);border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;color:#fff;">🗑️</button></span>
                         <span style="font-size:9px;color:#888;display:flex;gap:4px;align-items:center;">
                             <span style="${tokenStyle}">${entryTokens}tk</span>
                             <span>D${config.depth}O${displayOrder}${autoIncrement ? '↗' : ''}</span>
@@ -219,7 +226,7 @@ export function createListRenderer(deps = {}) {
 
         renderWorldbookCategory(config) {
             return `<div style="margin-bottom:12px;border:1px solid #e67e22;border-radius:8px;overflow:hidden;">
-                <div class="ttw-category-toggle" style="background:linear-gradient(135deg,#e67e22,#d35400);padding:10px 14px;cursor:pointer;font-weight:bold;display:flex;justify-content:space-between;align-items:center;">
+                <div class="ttw-category-toggle" data-category="${config.safeCategoryAttr}" style="background:linear-gradient(135deg,#e67e22,#d35400);padding:10px 14px;cursor:pointer;font-weight:bold;display:flex;justify-content:space-between;align-items:center;">
                     <span style="display:flex;align-items:center;">📁 ${config.safeCategoryText}<button class="ttw-light-toggle ${config.lightClass}" data-category="${config.safeCategoryAttr}" title="${this.escapeAttribute(config.lightTitle)}">${config.lightIcon}</button><button class="ttw-config-btn" data-category="${config.safeCategoryAttr}" title="配置分类默认位置/深度">⚙️</button></span>
                     <span style="font-size:12px;">${config.entryCount} 条目 | <span style="color:#f1c40f;">~${config.categoryTokens} tk</span></span>
                 </div>
