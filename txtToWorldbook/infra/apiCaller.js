@@ -130,6 +130,7 @@ const APICaller = {
 				if (typeof value === 'object') {
 					if (typeof value.text === 'string') return value.text;
 					if (typeof value.content === 'string') return value.content;
+					if (typeof value.value === 'string') return value.value;
 				}
 				return '';
 			};
@@ -137,8 +138,13 @@ const APICaller = {
 			return (
 				pickText(delta?.content)
 				|| pickText(delta?.text)
+				|| pickText(delta?.reasoning_content)
+				|| pickText(delta?.reasoning)
 				|| pickText(choice?.text)
 				|| pickText(choice?.message?.content)
+				|| pickText(choice?.message?.text)
+				|| pickText(parsed?.text)
+				|| pickText(parsed?.response)
 				|| pickText(parsed?.content)
 				|| pickText(parsed?.output_text)
 				|| ''
@@ -147,9 +153,12 @@ const APICaller = {
 
 		const consumeLine = (line) => {
 			const trimmed = line.trim();
-			if (!trimmed || trimmed.startsWith(':') || !trimmed.startsWith('data: ')) return;
-			const dataStr = trimmed.slice(6).trim();
+				if (!trimmed || trimmed.startsWith(':')) return;
+				const dataMatch = trimmed.match(/^data:\s*(.*)$/i);
+				if (!dataMatch) return;
+				const dataStr = String(dataMatch[1] || '').trim();
 			if (dataStr === '[DONE]') return;
+				if (!dataStr) return;
 			try {
 				const parsed = JSON.parse(dataStr);
 				const delta = extractTextFromSsePayload(parsed);
@@ -157,7 +166,13 @@ const APICaller = {
 					fullContent += delta;
 					if (typeof onChunk === 'function') onChunk(delta, fullContent, parsed);
 				}
-			} catch (e) { }
+				} catch (e) {
+					// Some proxies send plain text tokens in SSE data lines.
+					if (dataStr && !dataStr.startsWith('{') && !dataStr.startsWith('[')) {
+						fullContent += dataStr;
+						if (typeof onChunk === 'function') onChunk(dataStr, fullContent, null);
+					}
+				}
 		};
 
 		resetInactivityTimer();
