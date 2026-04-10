@@ -65,12 +65,6 @@ ${buildApiConfigCard('director', '🎬 导演AI配置')}
     </div>`;
 }
 
-const PLUGIN_VERSION = 'v2.4';
-
-function buildPluginUpdateHtml() {
-    return '';
-}
-
 function buildParallelConfigHtml() {
     return `
     <div class="ttw-setting-card ttw-setting-card-blue">
@@ -81,35 +75,15 @@ function buildParallelConfigHtml() {
                 <span>启用</span>
             </label>
             <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
-                章节并发
+                并发数
                 <input type="number" id="ttw-parallel-concurrency" value="1" min="1" max="10" class="ttw-input-small">
             </label>
-            <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
-                主API并发
-                <input type="number" id="ttw-parallel-main-concurrency" value="1" min="1" max="10" class="ttw-input-small">
-            </label>
-            <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
-                导演API并发
-                <input type="number" id="ttw-parallel-director-concurrency" value="1" min="1" max="10" class="ttw-input-small">
-            </label>
-        </div>
-        <div class="ttw-setting-hint" style="margin-top:8px;">
-            同章会并行调用主API与导演API；建议导演API并发不高于主API并发。
         </div>
         <div style="margin-top:10px;">
             <select id="ttw-parallel-mode" class="ttw-select">
                 <option value="independent">🚀 独立模式 - 最快，每章独立提取后合并</option>
                 <option value="batch">📦 分批模式 - 批次间累积上下文，更连贯</option>
             </select>
-        </div>
-        <div style="margin-top:10px;">
-            <select id="ttw-chapter-completion-mode" class="ttw-select">
-                <option value="consistency">🧩 一致性优先 - 主+导演都完成后再标记章节完成</option>
-                <option value="throughput">⚡ 吞吐优先 - 主API先落地，导演异步后补</option>
-            </select>
-            <div class="ttw-setting-hint" style="margin-top:6px;">
-                建议默认使用一致性优先；吞吐优先更快，但章节大纲可能稍后补齐。
-            </div>
         </div>
     </div>`;
 }
@@ -512,7 +486,6 @@ function buildResultSectionHtml() {
             <div id="ttw-current-chapter-section" class="ttw-story-panel" style="display:none;">
                 <div class="ttw-story-panel-header">
                     <h4 id="ttw-current-chapter-title">当前章节概览</h4>
-                    <button id="ttw-edit-current-chapter-btn" class="ttw-btn ttw-btn-small">✏️ 编辑章节概览</button>
                     <button id="ttw-next-chapter-btn" class="ttw-btn ttw-btn-small">⏭ 下一章</button>
                 </div>
                 <div id="ttw-current-chapter-hint" class="ttw-current-hint">进入章节后将自动发送开场白。</div>
@@ -571,9 +544,8 @@ export function buildModalHtml() {
     return `
     <div class="ttw-modal">
         <div class="ttw-modal-header">
-            <span class="ttw-modal-title">📚 TXT转世界书 <span style="font-size:12px;opacity:0.7;font-weight:normal;">${PLUGIN_VERSION}</span></span>
+            <span class="ttw-modal-title">📚 TXT转世界书 <span style="font-size:12px;opacity:0.7;font-weight:normal;">v2.5</span></span>
             <div class="ttw-header-actions">
-                <button id="ttw-update-plugin-btn" class="ttw-btn ttw-btn-small" style="background:rgba(241,196,15,0.35);margin-right:8px;" title="更新插件">⬆️ 更新</button>
                 <span class="ttw-help-btn" title="帮助">❓</span>
                 <button class="ttw-modal-close" type="button">✕</button>
             </div>
@@ -630,17 +602,8 @@ export function hydrateSettingsFromState(deps = {}) {
     const parallelConcurrencyEl = document.getElementById('ttw-parallel-concurrency');
     if (parallelConcurrencyEl) parallelConcurrencyEl.value = AppState.config.parallel.concurrency;
 
-    const parallelMainConcurrencyEl = document.getElementById('ttw-parallel-main-concurrency');
-    if (parallelMainConcurrencyEl) parallelMainConcurrencyEl.value = AppState.config.parallel.mainConcurrency || AppState.config.parallel.concurrency || 1;
-
-    const parallelDirectorConcurrencyEl = document.getElementById('ttw-parallel-director-concurrency');
-    if (parallelDirectorConcurrencyEl) parallelDirectorConcurrencyEl.value = AppState.config.parallel.directorConcurrency || AppState.config.parallel.concurrency || 1;
-
     const parallelModeEl = document.getElementById('ttw-parallel-mode');
     if (parallelModeEl) parallelModeEl.value = AppState.config.parallel.mode;
-
-    const chapterCompletionModeEl = document.getElementById('ttw-chapter-completion-mode');
-    if (chapterCompletionModeEl) chapterCompletionModeEl.value = AppState.settings.chapterCompletionMode || 'consistency';
 
     const useTavernApiEl = document.getElementById('ttw-use-tavern-api');
     if (useTavernApiEl) {

@@ -407,49 +407,6 @@ const {
         const ts = now.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
         updateStreamContent(`[${ts}] 🔍 ${msg}\n`);
     }
-
-    let pluginUpdateInProgress = false;
-    async function handlePluginSelfUpdate() {
-        if (pluginUpdateInProgress) return;
-
-        const updateBtn = document.getElementById('ttw-update-plugin-btn');
-        const oldText = updateBtn ? updateBtn.textContent : '';
-        const repoUrl = 'https://github.com/lokenpee/StoryWeaver';
-        const updater = (typeof window !== 'undefined') ? window.StoryWeaver?.updateSelfFromRepo : null;
-
-        if (typeof updater !== 'function') {
-            ErrorHandler.showUserError('当前环境不支持快捷更新，请到插件管理页手动更新。');
-            return;
-        }
-
-        pluginUpdateInProgress = true;
-        if (updateBtn) {
-            updateBtn.disabled = true;
-            updateBtn.textContent = '⏳ 更新中...';
-        }
-
-        try {
-            const result = await updater(repoUrl);
-            if (result?.mode === 'install') {
-                ErrorHandler.showUserSuccess('插件安装完成，请刷新页面加载新版本。');
-                return;
-            }
-            if (result?.isUpToDate) {
-                ErrorHandler.showUserSuccess('插件已是最新版本。');
-                return;
-            }
-            const commitSuffix = result?.shortCommitHash ? ` (${result.shortCommitHash})` : '';
-            ErrorHandler.showUserSuccess(`插件更新成功${commitSuffix}，请刷新页面生效。`);
-        } catch (error) {
-            ErrorHandler.showUserError(error?.message || '插件更新失败，请稍后重试。');
-        } finally {
-            pluginUpdateInProgress = false;
-            if (updateBtn) {
-                updateBtn.disabled = false;
-                updateBtn.textContent = oldText || '⬆️ 更新插件';
-            }
-        }
-    }
     // ========== 分类灯状态管理 ==========
     function getCategoryLightState(category) {
         if (AppState.config.categoryLight.hasOwnProperty(category)) {
@@ -666,7 +623,6 @@ const coreServices = createCoreServices({
         updateStreamContent,
         debugLog,
         callAPI: apiService.callAPI,
-        callDirectorAPI: apiService.callDirectorAPI,
         isTokenLimitError,
         parseAIResponse: parserService.parseAIResponse,
         postProcessResultWithChapterIndex,
@@ -981,8 +937,6 @@ const chapterExperienceView = createChapterExperienceView({
     ErrorHandler,
     callAPI,
     getLanguagePrefix,
-    ModalFactory,
-    MemoryHistoryDB,
     retryChapterOutline,
     showResultSection,
 });
@@ -1251,7 +1205,6 @@ shellRuntime = createShellRuntime(createShellRuntimeConfig({
     exportVolumes: (...args) => exportVolumes(...args),
     exportToSillyTavern: (...args) => exportToSillyTavern(...args),
     showMemoryContentModal,
-    handlePluginSelfUpdate,
     updateStartButtonState,
     showQueueSection,
     showProgressSection,
