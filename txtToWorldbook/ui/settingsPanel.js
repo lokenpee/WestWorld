@@ -512,6 +512,7 @@ function buildResultSectionHtml() {
             <div id="ttw-current-chapter-section" class="ttw-story-panel" style="display:none;">
                 <div class="ttw-story-panel-header">
                     <h4 id="ttw-current-chapter-title">当前章节概览</h4>
+                    <button id="ttw-edit-current-chapter-btn" class="ttw-btn ttw-btn-small">✏️ 编辑章节概览</button>
                     <button id="ttw-next-chapter-btn" class="ttw-btn ttw-btn-small">⏭ 下一章</button>
                 </div>
                 <div id="ttw-current-chapter-hint" class="ttw-current-hint">进入章节后将自动发送开场白。</div>

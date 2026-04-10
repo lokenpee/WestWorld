@@ -981,6 +981,8 @@ const chapterExperienceView = createChapterExperienceView({
     ErrorHandler,
     callAPI,
     getLanguagePrefix,
+    ModalFactory,
+    MemoryHistoryDB,
     retryChapterOutline,
     showResultSection,
 });
