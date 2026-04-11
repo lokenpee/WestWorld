@@ -294,12 +294,19 @@ export function createChapterExperienceView(deps = {}) {
 
     function normalizeBeatForView(rawBeat = {}, idx = 0) {
         const source = rawBeat && typeof rawBeat === 'object' ? rawBeat : {};
-        const tags = Array.isArray(source.tags)
-            ? source.tags.map((t) => toShortText(t, 16)).filter(Boolean).slice(0, 4)
-            : [];
         const eventSummary = toShortText(
             source.event_summary || source.eventSummary || source.summary || source.event || source.description || `事件点${idx + 1}`,
             90
+        );
+        const entryEvent = toShortText(
+            source.entryEvent
+            || source.entry_event
+            || source.opening_event
+            || source.openingEvent
+            || source.entry_condition
+            || source.enter_condition
+            || '从上一节拍结果自然衔接进入当前事件。',
+            120
         );
         const exitCondition = toShortText(
             source.exitCondition
@@ -311,15 +318,16 @@ export function createChapterExperienceView(deps = {}) {
             90
         );
         const splitReason = toShortText(source.split_reason || source.splitReason || source.reason || '用于保持叙事单元完整。', 120);
-        const selfCheck = toShortText(
-            source.self_check || source.selfCheck || source.note || source.reflection || source.self_review || '',
-            140
-        );
+        const selfCheck = toShortText(source.self_check || source.selfCheck || source.note || source.reflection || source.self_review || '', 140);
+        const tags = Array.isArray(source.tags)
+            ? source.tags.map((t) => toShortText(t, 16)).filter(Boolean).slice(0, 4)
+            : [];
 
         return {
             id: String(source.id || `b${idx + 1}`),
             summary: eventSummary,
             event_summary: eventSummary,
+            entryEvent,
             exitCondition,
             split_reason: splitReason,
             self_check: normalizeSelfCheck(selfCheck),
@@ -356,6 +364,7 @@ export function createChapterExperienceView(deps = {}) {
             id: `b${index + 1}`,
             event_summary: `事件点${index + 1}`,
             original_text: '',
+            entryEvent: '从上一节拍结果自然衔接进入当前事件。',
             exitCondition: '等待用户行动或关键互动完成',
             split_reason: '用于保持叙事单元完整。',
             self_check: '未提供自检说明。',
@@ -385,6 +394,15 @@ export function createChapterExperienceView(deps = {}) {
             original_text: typeof source.original_text === 'string'
                 ? source.original_text
                 : (typeof source.originalText === 'string' ? source.originalText : ''),
+            entryEvent: String(
+                source.entryEvent
+                || source.entry_event
+                || source.opening_event
+                || source.openingEvent
+                || source.entry_condition
+                || source.enter_condition
+                || '从上一节拍结果自然衔接进入当前事件。'
+            ).trim() || '从上一节拍结果自然衔接进入当前事件。',
             exitCondition: String(
                 source.exitCondition
                 || source.exit_condition
@@ -462,13 +480,6 @@ export function createChapterExperienceView(deps = {}) {
     }
 
     function buildEditorBeatCardHtml(beat, index, currentBeatIndex) {
-        const splitRule = normalizeSplitRule(beat.split_rule || {});
-        const splitPrimary = splitRule.primary;
-        const splitOptions = EDITABLE_SPLIT_TYPES.map((item) => {
-            const selectedAttr = item.value === splitPrimary ? ' selected' : '';
-            return `<option value="${item.value}"${selectedAttr}>${item.label}</option>`;
-        }).join('');
-
         return `
 <div class="ttw-beat-editor-card" data-beat-index="${index}">
     <div class="ttw-beat-editor-head">
@@ -490,28 +501,12 @@ export function createChapterExperienceView(deps = {}) {
         <textarea rows="5" class="ttw-editor-textarea" data-field="original_text">${escapeHtml(beat.original_text || '')}</textarea>
     </label>
     <label class="ttw-editor-field">
+        <span class="ttw-editor-field-label">入场事件</span>
+        <textarea rows="2" class="ttw-editor-textarea" data-field="entryEvent">${escapeHtml(beat.entryEvent || '')}</textarea>
+    </label>
+    <label class="ttw-editor-field">
         <span class="ttw-editor-field-label">退出条件</span>
         <textarea rows="2" class="ttw-editor-textarea" data-field="exitCondition">${escapeHtml(beat.exitCondition || '')}</textarea>
-    </label>
-    <label class="ttw-editor-field">
-        <span class="ttw-editor-field-label">切分理由</span>
-        <textarea rows="2" class="ttw-editor-textarea" data-field="split_reason">${escapeHtml(beat.split_reason || '')}</textarea>
-    </label>
-    <label class="ttw-editor-field">
-        <span class="ttw-editor-field-label">自检说明</span>
-        <textarea rows="2" class="ttw-editor-textarea" data-field="self_check">${escapeHtml(beat.self_check || '')}</textarea>
-    </label>
-    <label class="ttw-editor-field">
-        <span class="ttw-editor-field-label">切分规则</span>
-        <select class="ttw-editor-select" data-field="split_rule_primary">${splitOptions}</select>
-    </label>
-    <label class="ttw-editor-field">
-        <span class="ttw-editor-field-label">规则理由</span>
-        <textarea rows="2" class="ttw-editor-textarea" data-field="split_rule_rationale">${escapeHtml(splitRule.rationale || '')}</textarea>
-    </label>
-    <label class="ttw-editor-field">
-        <span class="ttw-editor-field-label">标签（逗号分隔）</span>
-        <input type="text" class="ttw-editor-input" data-field="tags" value="${escapeHtml((beat.tags || []).join(', '))}">
     </label>
 </div>`;
     }
@@ -540,26 +535,21 @@ export function createChapterExperienceView(deps = {}) {
 
         const cards = Array.from(modal.querySelectorAll('.ttw-beat-editor-card'));
         draft.beats = cards.map((card, idx) => {
+            const previous = draft.beats[idx] && typeof draft.beats[idx] === 'object' ? draft.beats[idx] : {};
             const eventSummary = String(card.querySelector('[data-field="event_summary"]')?.value || '').trim() || `事件点${idx + 1}`;
-            const splitPrimaryRaw = String(card.querySelector('[data-field="split_rule_primary"]')?.value || '').trim();
-            const splitRationaleRaw = String(card.querySelector('[data-field="split_rule_rationale"]')?.value || '').trim();
-            const splitRule = normalizeSplitRule({
-                primary: splitPrimaryRaw || 'goal_shift',
-                rationale: splitRationaleRaw,
-            });
 
             return {
                 id: `b${idx + 1}`,
                 event_summary: eventSummary,
                 original_text: String(card.querySelector('[data-field="original_text"]')?.value || ''),
+                entryEvent: String(card.querySelector('[data-field="entryEvent"]')?.value || '').trim() || '从上一节拍结果自然衔接进入当前事件。',
                 exitCondition: String(card.querySelector('[data-field="exitCondition"]')?.value || '').trim() || '等待用户行动或关键互动完成',
-                split_reason: String(card.querySelector('[data-field="split_reason"]')?.value || '').trim() || '用于保持叙事单元完整。',
-                self_check: normalizeSelfCheck(card.querySelector('[data-field="self_check"]')?.value || ''),
-                split_rule: {
-                    primary: splitRule.primary,
-                    rationale: splitRule.rationale,
-                },
-                tags: parseTagsInput(card.querySelector('[data-field="tags"]')?.value || ''),
+                split_reason: String(previous.split_reason || previous.splitReason || '用于保持叙事单元完整。').trim() || '用于保持叙事单元完整。',
+                self_check: normalizeSelfCheck(previous.self_check || previous.selfCheck || ''),
+                split_rule: normalizeSplitRule(previous.split_rule || previous.splitRule || {}),
+                tags: Array.isArray(previous.tags)
+                    ? previous.tags.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 4)
+                    : [],
             };
         });
 
@@ -589,6 +579,8 @@ export function createChapterExperienceView(deps = {}) {
                 event_summary: normalized.event_summary,
                 summary: normalized.event_summary,
                 original_text: normalized.original_text,
+                entry_event: normalized.entryEvent,
+                entryEvent: normalized.entryEvent,
                 exitCondition: normalized.exitCondition,
                 split_reason: normalized.split_reason,
                 self_check: normalized.self_check,
@@ -744,6 +736,7 @@ export function createChapterExperienceView(deps = {}) {
                 id: `b${idx + 1}`,
                 event_summary: node,
                 summary: node,
+                entry_event: '从上一节拍结果自然衔接进入当前事件。',
                 exit_condition: '当本节拍目标完成或局势发生明显转折时。',
                 split_reason: '默认切分：用于给章节建立可推进的小剧情单元。',
                 self_check: '默认降级节拍，无完整切分诊断。',
@@ -778,6 +771,7 @@ export function createChapterExperienceView(deps = {}) {
             id: `b${idx + 1}`,
             event_summary: summary,
             summary,
+            entry_event: '从上一节拍结果自然衔接进入当前事件。',
             exitCondition: '当本节拍目标完成或局势发生明显转折时。',
             split_reason: '默认切分：用于给章节建立可推进的小剧情单元。',
             self_check: '默认降级节拍，无完整切分诊断。',
@@ -862,26 +856,24 @@ export function createChapterExperienceView(deps = {}) {
         const beatCards = beats.length > 0
             ? beats.map((beat, idx) => {
                 const isActive = idx === currentBeatIndex;
-                const tagsHtml = beat.tags.length > 0
-                    ? `<div class="ttw-beat-tags">${beat.tags.map((tag) => `<span class="ttw-beat-tag">${escapeHtml(tag)}</span>`).join('')}</div>`
-                    : '';
-                const splitRule = beat.split_rule && typeof beat.split_rule === 'object'
-                    ? beat.split_rule
-                    : normalizeSplitRule({});
                 const originalText = typeof beat.original_text === 'string' ? beat.original_text : '';
-                const selfCheck = normalizeSelfCheck(beat.self_check || beat.selfCheck || beat.note || '');
+                const entryEvent = String(
+                    beat.entryEvent
+                    || beat.entry_event
+                    || beat.opening_event
+                    || beat.openingEvent
+                    || beat.entry_condition
+                    || '从上一节拍结果自然衔接进入当前事件。'
+                ).trim();
                 return `<div class="ttw-beat-item ${isActive ? 'is-active' : ''}">
     <div class="ttw-beat-item-head">
         <span class="ttw-beat-id">${escapeHtml(beat.id || `b${idx + 1}`)}</span>
         ${isActive ? '<span class="ttw-beat-active">当前阶段</span>' : ''}
     </div>
-    <div class="ttw-beat-line">📖 事件：${escapeHtml(beat.event_summary || beat.summary || '')}</div>
+    <div class="ttw-beat-line">📖 事件摘要：${escapeHtml(beat.event_summary || beat.summary || '')}</div>
     <div class="ttw-beat-original">📝 原文：${escapeHtml(originalText || '暂无该节拍原文（旧数据或生成异常）。')}</div>
+    <div class="ttw-beat-line">🚪 入场事件：${escapeHtml(entryEvent || '从上一节拍结果自然衔接进入当前事件。')}</div>
     <div class="ttw-beat-line">🎯 退出条件：${escapeHtml(beat.exitCondition || '等待关键互动完成')}</div>
-    <div class="ttw-beat-line">✂️ 切分理由：${escapeHtml(beat.split_reason || '未提供')}</div>
-    <div class="ttw-beat-line">🧠 自检：${escapeHtml(selfCheck)}</div>
-    <div class="ttw-beat-line ttw-beat-rule">📐 规则：${escapeHtml(splitRule.primary || 'goal_shift')} ｜ 理由：${escapeHtml(splitRule.rationale || '未提供')}</div>
-    ${tagsHtml}
 </div>`;
             }).join('')
             : '<div class="ttw-script-empty">暂无轻节拍，默认按摘要推进。</div>';

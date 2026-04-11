@@ -106,6 +106,16 @@ export function createDirectorService(deps = {}) {
         return {
             id: String(source.id || `b${idx + 1}`),
             summary: toShortText(source.event_summary || source.eventSummary || source.summary || source.event || source.description || `事件点${idx + 1}`, 100),
+            entryEvent: toShortText(
+                source.entryEvent
+                || source.entry_event
+                || source.opening_event
+                || source.openingEvent
+                || source.entry_condition
+                || source.enter_condition
+                || '从上一节拍结果自然衔接进入当前事件。',
+                120
+            ),
             exitCondition: toShortText(
                 source.exitCondition
                 || source.exit_condition

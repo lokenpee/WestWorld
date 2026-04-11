@@ -404,6 +404,15 @@
         const source = rawBeat && typeof rawBeat === 'object' ? rawBeat : {};
         const eventSummary = String(source.event_summary || source.eventSummary || source.summary || source.event || source.description || fallbackSummary || '').trim();
         const summary = String(source.summary || eventSummary || fallbackSummary || '').trim();
+        const entryEvent = String(
+            source.entry_event
+            || source.entryEvent
+            || source.opening_event
+            || source.openingEvent
+            || source.entry_condition
+            || source.enter_condition
+            || ''
+        ).trim();
         const exitCondition = String(
             source.exitCondition
             || source.exit_condition
@@ -433,6 +442,7 @@
             id: String(source.id || `b${idx + 1}`).trim() || `b${idx + 1}`,
             summary: summary || `事件点${idx + 1}`,
             event_summary: eventSummary || summary || `事件点${idx + 1}`,
+            entryEvent: entryEvent || '从上一节拍结果自然衔接进入当前事件。',
             exitCondition: exitCondition || '等待用户行动或关键互动完成',
             split_reason: splitReason || '该切分用于保持叙事单元完整并突出剧情转折。',
             self_check: selfCheck,
@@ -980,6 +990,12 @@
                 id: `b${idx + 1}`,
                 summary,
                 event_summary: point?.event_summary || summary,
+                entry_event: point?.entry_event
+                    || point?.entryEvent
+                    || point?.opening_event
+                    || point?.openingEvent
+                    || point?.entry_condition
+                    || '',
                 exit_condition: point?.exit_condition
                     || point?.exitCondition
                     || point?.exist_condition
@@ -1538,6 +1554,15 @@
         const eventSummary = String(
             source.event_summary || source.eventSummary || source.summary || source.event || source.description || ''
         ).trim();
+        const entryEvent = String(
+            source.entry_event
+            || source.entryEvent
+            || source.opening_event
+            || source.openingEvent
+            || source.entry_condition
+            || source.enter_condition
+            || ''
+        ).trim();
         const exitCondition = String(
             source.exit_condition
             || source.exitCondition
@@ -1609,6 +1634,7 @@
         return {
             anchor,
             event_summary: eventSummary || `节拍${idx + 1}`,
+            entry_event: entryEvent || '从上一节拍结果自然进入当前节拍。',
             exit_condition: normalizedExitCondition,
             split_reason: normalizedSplitReason,
             self_check: normalizeSelfCheck(selfCheck, compatibilityWarnings),
@@ -1819,6 +1845,7 @@
         【字段含义】\n
             - anchor: 原文切分点前的一段话作为章节分割器分割锚点（10-50字，句尾，不在引号内）\n
             - event_summary: 这个节拍事件的总结（≤30字）\n
+            - entry_event: 该节拍如何进入（开场事件/触发条件，建议一句话）\n
             - exit_condition: 什么情况下算这个节拍结束（具体条件）\n
             - exist_condition/exist condition: exit_condition 的兼容错拼字段（可不填）\n
             - split_reason: 为什么在这里切（剧情逻辑）\n
@@ -1831,7 +1858,7 @@
         3) 每个 split_point 至少提供 anchor。\n
         4) anchor 要尽量靠近自然句尾，且不要落在引号/括号内部。\n
         5) anchor 建议长度 ${MIN_ANCHOR_LEN}-${MAX_ANCHOR_LEN} 字；如果确实找不到合适长锚，可略短。${retryBlock}\n\n
-        输出 JSON 模板：\n{\n  "outline": "可选，1句概括",\n  "split_points": [\n    {\n      "anchor": "正文中的精确子串（核心字段）",\n      "event_summary": "可选",\n      "exit_condition": "可选，建议填写节拍退出条件",\n      "exist_condition": "可选，exit_condition 的兼容错拼别名",\n      "split_reason": "可选",\n      "self_check": "可选，自检一句话",\n      "split_rule": {\n        "primary": "conflict_closed",\n        "rationale": "可选"\n      }\n    }\n  ]\n}\n\n章节标题：${chapterTitle}${previousOutline}\n\n章节正文（只用于定位 anchor）：\n---\n${memory.content}\n---`;
+        输出 JSON 模板：\n{\n  "outline": "可选，1句概括",\n  "split_points": [\n    {\n      "anchor": "正文中的精确子串（核心字段）",\n      "event_summary": "可选",\n      "entry_event": "可选，节拍入场事件",\n      "exit_condition": "可选，建议填写节拍退出条件",\n      "exist_condition": "可选，exit_condition 的兼容错拼别名",\n      "split_reason": "可选",\n      "self_check": "可选，自检一句话",\n      "split_rule": {\n        "primary": "conflict_closed",\n        "rationale": "可选"\n      }\n    }\n  ]\n}\n\n章节标题：${chapterTitle}${previousOutline}\n\n章节正文（只用于定位 anchor）：\n---\n${memory.content}\n---`;
     }
 
     async function generateChapterAssets(index, options = {}) {
