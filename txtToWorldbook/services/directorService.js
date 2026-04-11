@@ -313,6 +313,113 @@ export function createDirectorService(deps = {}) {
         return '';
     }
 
+    function detectExplicitBeatSwitchCommand(userMessage) {
+        const rawText = String(userMessage || '');
+        const text = rawText.replace(/\s+/g, '');
+        if (!text) {
+            return {
+                requested: false,
+                direction: 'none',
+                signal: '',
+                reason: 'empty-user-message',
+                source: 'rule-explicit',
+                targetIndex: null,
+            };
+        }
+
+        const negationPatterns = [
+            /(不|别|不要|先不|先别|暂不|暂时不).{0,10}(切换到|切到|切|跳到|跳转到|跳|转到|转向|转|进入|接到|推进到|推进|回到|退到|退回到|移到|到).{0,8}(下一个|下一|下个|上一个|上一|上个)?节拍/,
+            /(别|不要).{0,8}(下一节拍|下个节拍|下一个节拍|上一节拍|上个节拍|上一个节拍)/,
+        ];
+        if (negationPatterns.some((pattern) => pattern.test(text))) {
+            return {
+                requested: false,
+                direction: 'none',
+                signal: 'negated-switch-command',
+                reason: 'explicit-negation',
+                source: 'rule-explicit',
+                targetIndex: null,
+            };
+        }
+
+        const indexMatch = text.match(/(?:切换到|切到|跳到|跳转到|转到|转向|进入|推进到|回到|退到|移到|到)第?(\d+)节拍/);
+        if (indexMatch) {
+            const targetIndex = Math.max(0, Number(indexMatch[1]) - 1);
+            return {
+                requested: true,
+                direction: 'index',
+                signal: 'switch-index-beat',
+                reason: 'explicit-switch-command',
+                source: 'rule-explicit',
+                targetIndex: Number.isFinite(targetIndex) ? targetIndex : null,
+            };
+        }
+
+        const switchRules = [
+            {
+                direction: 'next',
+                signal: 'verb-next-beat',
+                patterns: [
+                    /(切换到|切到|切|跳到|跳转到|跳|转到|转向|转|进入|接到|推进到|推进|移到|到)(下一个|下一|下个)节拍/,
+                    /(切换下一个节拍|切下一节拍|跳下一个节拍|跳下一节拍|转下一个节拍|转下一节拍)/,
+                ],
+            },
+            {
+                direction: 'next',
+                signal: 'next-beat-command',
+                patterns: [
+                    /^(下一个节拍|下个节拍|下一节拍)(吧|。|！|!|,|，)?$/,
+                    /nextbeat|next_beat|nextbeatplease|nextchapterbeat/i,
+                ],
+            },
+            {
+                direction: 'prev',
+                signal: 'verb-prev-beat',
+                patterns: [
+                    /(回到|退到|退回到|切回到|切回|转回到|转回|切换到|切到|跳到|转到|移到|到)(上一个|上一|上个)节拍/,
+                    /(切换上一个节拍|切上一节拍|跳上一个节拍|跳上一节拍|转上一个节拍|转上一节拍)/,
+                ],
+            },
+            {
+                direction: 'prev',
+                signal: 'prev-beat-command',
+                patterns: [
+                    /^(上一个节拍|上个节拍|上一节拍)(吧|。|！|!|,|，)?$/,
+                    /previousbeat|prevbeat|previous_beat/i,
+                ],
+            },
+            {
+                direction: 'stay',
+                signal: 'stay-current-beat',
+                patterns: [
+                    /(当前节拍|这个节拍|这一个节拍|留在当前节拍|继续当前节拍)/,
+                ],
+            },
+        ];
+
+        for (const rule of switchRules) {
+            if (rule.patterns.some((pattern) => pattern.test(text))) {
+                return {
+                    requested: rule.direction !== 'stay',
+                    direction: rule.direction,
+                    signal: rule.signal,
+                    reason: rule.direction === 'stay' ? 'explicit-stay-command' : 'explicit-switch-command',
+                    source: 'rule-explicit',
+                    targetIndex: null,
+                };
+            }
+        }
+
+        return {
+            requested: false,
+            direction: 'none',
+            signal: '',
+            reason: 'no-explicit-switch-command',
+            source: 'rule-explicit',
+            targetIndex: null,
+        };
+    }
+
     const INTENT_LABELS = {
         advance: 'advance',
         stay: 'stay',
@@ -598,7 +705,7 @@ export function createDirectorService(deps = {}) {
         return null;
     }
 
-    function buildDirectorPrompt({ chapterTitle, chapterOutline, currentBeatIdx, beats, latestDialogue }) {
+    function buildDirectorPrompt({ chapterTitle, chapterOutline, currentBeatIdx, beats, latestDialogue, latestUserMessage, switchControl }) {
         const compactBeats = beats.map((beat, idx) => ({
             idx,
             id: beat.id,
@@ -613,22 +720,26 @@ export function createDirectorService(deps = {}) {
             : '无';
         const previousTail = getPreviousBeatTail(beats, currentBeatIdx, 100) || '无';
         const splitRuleHint = buildSplitRuleHint(currentBeat);
+        const switchStatus = switchControl?.switched === true
+            ? `已切换（${switchControl.signal || switchControl.reason || 'switch'}）`
+            : `未切换（${switchControl?.reason || 'no-explicit-switch-command'}）`;
 
         const prefix = getLanguagePrefix ? getLanguagePrefix() : '';
         return `${prefix}${[
-            '你是“互动小说导演”。你的职责是：综合上下文判断本回合是否推进节拍，并输出给演员AI可直接执行的演出框架。',
+            '你是“互动小说导演”。你的职责是：基于已锁定的当前节拍，为演员AI生成可直接执行的演出框架。',
             '',
             '核心原则：',
-            '1) 用户意图只能作为证据，不能单独决定 should_advance。',
-            '2) 你要结合：当前节拍原文、最近对话（用户+AI）、上一节拍承接来判断。',
-            '3) 若 should_advance=true，必须给出 narrative_bridge（1-2句，40-120字）交代中间过渡，避免跳切割裂。',
+            '1) 你不负责节拍切换，系统已锁定当前节拍。禁止自行改 stage 或决定 advance。',
+            '2) 你要结合：当前节拍原文、最近对话（用户+AI）、上一节拍承接来编排演出。',
+            '3) 若系统本回合发生节拍切换，必须给出 narrative_bridge（1-2句，40-120字）交代过渡，避免割裂。',
             '4) 必须基于当前节拍原文证据输出 direction_script（起点-过程-终点），演员将按这个框架执行。',
             '',
             '输出硬规则：',
             '1) 只输出 JSON，不要代码块，不要解释文字。',
             '2) confidence、intent_confidence 必须是 0-1 数字。',
             '3) direction_script.steps 必须是 2-4 条短步骤。',
-            '4) 证据不足时应保守处理：should_advance=false。',
+            `4) stage_idx 必须固定为 ${currentBeatIdx}，should_advance 必须为 false（系统已完成切拍控制）。`,
+            '5) narrative_bridge 仅在系统本回合发生切拍时填写，否则留空字符串。',
             '',
             '允许的 user_intent 标签：advance, stay, neutral, switch_scene, skip, investigate, search, explore, travel, dialogue, negotiate, reflect, plan, rest, stealth, combat, summarize, clarify, request_hint, meta。',
             '',
@@ -636,6 +747,8 @@ export function createDirectorService(deps = {}) {
             `本章摘要：${chapterOutline}`,
             `当前阶段索引：${currentBeatIdx}`,
             `当前节拍规则提示：${splitRuleHint}`,
+            `系统切拍控制结果：${switchStatus}`,
+            `用户最新输入：${toShortText(latestUserMessage || '无', 320) || '无'}`,
             '',
             '节拍列表（供定位阶段）：',
             JSON.stringify(compactBeats, null, 2),
@@ -739,6 +852,92 @@ export function createDirectorService(deps = {}) {
             start: start || toShortText(fallback.start || '从当前局面直接接续。', 180),
             steps,
             end: end || toShortText(fallback.end || '以可承接的结果收束。', 180),
+        };
+    }
+
+    function resolveBeatSwitchControl(currentBeatIdx, beats, switchCommand) {
+        const maxIdx = Math.max(0, beats.length - 1);
+        const safeCurrentIdx = Math.max(0, Math.min(currentBeatIdx, maxIdx));
+        const hasNextBeat = safeCurrentIdx < maxIdx;
+        const hasPreviousBeat = safeCurrentIdx > 0;
+
+        const direction = String(switchCommand?.direction || 'none');
+        const signal = String(switchCommand?.signal || '');
+        const requested = switchCommand?.requested === true;
+
+        if (!requested || direction === 'none' || direction === 'stay') {
+            return {
+                switched: false,
+                lockedBeatIdx: safeCurrentIdx,
+                shouldAdvance: false,
+                direction: 'none',
+                signal,
+                reason: switchCommand?.reason || 'locked-current',
+            };
+        }
+
+        if (direction === 'index' && Number.isInteger(switchCommand?.targetIndex)) {
+            const targetIdx = Math.max(0, Math.min(Number(switchCommand.targetIndex), maxIdx));
+            const switched = targetIdx !== safeCurrentIdx;
+            return {
+                switched,
+                lockedBeatIdx: targetIdx,
+                shouldAdvance: targetIdx > safeCurrentIdx,
+                direction: switched ? (targetIdx > safeCurrentIdx ? 'next' : 'prev') : 'none',
+                signal,
+                reason: switched ? 'user-switched-index' : 'index-no-change',
+            };
+        }
+
+        if (direction === 'next') {
+            if (!hasNextBeat) {
+                return {
+                    switched: false,
+                    lockedBeatIdx: safeCurrentIdx,
+                    shouldAdvance: false,
+                    direction: 'none',
+                    signal,
+                    reason: 'last-beat-no-advance',
+                };
+            }
+            return {
+                switched: true,
+                lockedBeatIdx: safeCurrentIdx + 1,
+                shouldAdvance: true,
+                direction: 'next',
+                signal,
+                reason: 'user-switched-next',
+            };
+        }
+
+        if (direction === 'prev') {
+            if (!hasPreviousBeat) {
+                return {
+                    switched: false,
+                    lockedBeatIdx: safeCurrentIdx,
+                    shouldAdvance: false,
+                    direction: 'none',
+                    signal,
+                    reason: 'first-beat-no-backward',
+                };
+            }
+            return {
+                switched: true,
+                lockedBeatIdx: safeCurrentIdx - 1,
+                shouldAdvance: false,
+                direction: 'prev',
+                signal,
+                reason: 'user-switched-prev',
+            };
+        }
+
+        return {
+            switched: false,
+            lockedBeatIdx: safeCurrentIdx,
+            shouldAdvance: false,
+            direction: 'none',
+            signal,
+            reason: 'unsupported-switch-direction',
         };
     }
 
@@ -889,7 +1088,8 @@ export function createDirectorService(deps = {}) {
         const previousStageIdx = Number.isInteger(decision.previous_stage_idx)
             ? Math.max(0, Math.min(decision.previous_stage_idx, beats.length - 1))
             : Math.max(0, stageIdx - 1);
-        const jumpCount = Math.max(0, stageIdx - previousStageIdx);
+        const jumpCount = Math.abs(stageIdx - previousStageIdx);
+        const switchedStage = stageIdx !== previousStageIdx;
         const budgetLimit = Math.max(900, Number(AppState.settings?.directorInjectionCharBudget) || 2600);
 
         let previousTail = getPreviousBeatTail(beats, stageIdx, 100);
@@ -929,18 +1129,23 @@ export function createDirectorService(deps = {}) {
             : ['围绕当前节拍推进一个可见动作。', '在可承接位置收束本轮输出。'];
 
         let narrativeBridge = toShortText(decision.narrative_bridge || '', 180);
-        if (decision.should_advance === true && !narrativeBridge) {
+        if (switchedStage && !narrativeBridge) {
             const previousBeat = beats[Math.max(0, previousStageIdx)] || beats[Math.max(0, stageIdx - 1)] || null;
             narrativeBridge = buildDefaultNarrativeBridge(previousBeat, currentBeat, Math.max(1, jumpCount));
         }
 
-        const advanceText = decision.should_advance === true
-            ? '推进到下一节拍（必须先写1-2句过渡再切入）'
-            : '停留在当前节拍内继续演出';
+        const switchDirection = String(decision.switch_direction || 'none');
+        const advanceText = switchDirection === 'next'
+            ? '已切换到下一节拍（必须先写1-2句过渡再切入）'
+            : (switchDirection === 'prev'
+                ? '已切回上一节拍（必须先写1-2句回接再切入）'
+                : '停留在当前节拍内继续演出');
 
-        const actorGoal = decision.should_advance === true
-            ? '先收束当前阶段关键动作，再用过渡句切入下一节拍。'
-            : '在当前节拍内完成一次有效推进并形成可承接收束。';
+        const actorGoal = switchDirection === 'next'
+            ? '先收束上一阶段关键动作，再用过渡句切入本节拍。'
+            : (switchDirection === 'prev'
+                ? '先用回接句对齐上下文，再按本节拍框架推进。'
+                : '在当前节拍内完成一次有效推进并形成可承接收束。');
 
         const processLines = steps
             .slice(0, 4)
@@ -966,9 +1171,11 @@ export function createDirectorService(deps = {}) {
             '- 过程:',
             ...processLines,
             `- 终点: ${directionScript.end}`,
-            decision.should_advance === true ? `- 跨节拍过渡: ${narrativeBridge}` : '- 跨节拍过渡: 本回合不需要。',
+            switchedStage ? `- 跨节拍过渡: ${narrativeBridge}` : '- 跨节拍过渡: 本回合不需要。',
             decision.tone_hint ? `- 基调提示: ${decision.tone_hint}` : '',
-            '- 执行要求: 必须按“起点 -> 过程 -> 终点”组织演出；若推进节拍，必须先写过渡再切入新节拍。',
+            switchedStage
+                ? '- 执行要求: 必须按“起点 -> 过程 -> 终点”组织演出；本回合先写过渡/回接，再展开本节拍正文。'
+                : '- 执行要求: 必须按“起点 -> 过程 -> 终点”组织演出，禁止跳出当前节拍。',
         ].join('\n');
     }
 
@@ -1013,14 +1220,21 @@ export function createDirectorService(deps = {}) {
 
         const latestUserMessage = getLatestUserMessage(eventData);
         const ruleIntent = detectUserIntent(latestUserMessage);
+        const switchCommand = detectExplicitBeatSwitchCommand(latestUserMessage);
+        const switchControl = resolveBeatSwitchControl(currentBeatIdx, beats, switchCommand);
+        const lockedBeatIdx = switchControl.lockedBeatIdx;
         directorDebug(`intent-rule=${ruleIntent.kind}${ruleIntent.signal ? ` (${ruleIntent.signal})` : ''}`);
+        directorDebug(`switch-command=${switchCommand.requested ? `on(${switchCommand.signal || 'explicit'})` : 'off'}`);
+        directorDebug(`switch-control=${switchControl.reason}, lockedBeat=${lockedBeatIdx + 1}/${beats.length}`);
 
         const prompt = buildDirectorPrompt({
             chapterTitle: memory.chapterTitle || `第${chapterIndex + 1}章`,
             chapterOutline: toShortText(memory.chapterOutline || '', 140),
-            currentBeatIdx,
+            currentBeatIdx: lockedBeatIdx,
             beats,
             latestDialogue: getLatestDialogue(eventData),
+            latestUserMessage,
+            switchControl,
         });
 
         let decision = null;
@@ -1030,14 +1244,14 @@ export function createDirectorService(deps = {}) {
             const parsed = extractJsonObject(response);
             if (!parsed) {
                 directorWarn('导演返回内容无法解析为JSON，已使用回退判定', toShortText(response, 220));
-                decision = buildFallbackDecision(currentBeatIdx, beats, 'parse-fallback');
+                decision = buildFallbackDecision(lockedBeatIdx, beats, 'parse-fallback');
                 decisionSource = 'fallback-parse';
             } else {
-                decision = normalizeDecision(parsed, currentBeatIdx, beats);
+                decision = normalizeDecision(parsed, lockedBeatIdx, beats);
             }
         } catch (error) {
             directorWarn('导演判定失败，已使用回退判定', error?.message || String(error));
-            decision = buildFallbackDecision(currentBeatIdx, beats, 'error-fallback');
+            decision = buildFallbackDecision(lockedBeatIdx, beats, 'error-fallback');
             decisionSource = 'fallback-error';
         }
 
@@ -1055,22 +1269,33 @@ export function createDirectorService(deps = {}) {
         decision.intent_source = resolvedIntent.source;
         decision.intent_rationale = resolvedIntent.rationale;
 
-        decision = applyUserIntentToDecision(decision, resolvedIntent, currentBeatIdx, beats);
+        decision = applyUserIntentToDecision(decision, resolvedIntent, lockedBeatIdx, beats);
 
-        if (decision.should_advance === true && decision.stage_idx > currentBeatIdx && !decision.narrative_bridge) {
+        // 节拍切换由流程层决定，导演输出仅负责“怎么演”。
+        decision.stage_idx = lockedBeatIdx;
+        decision.should_advance = switchControl.shouldAdvance;
+        decision.switch_direction = switchControl.direction;
+        decision.switch_signal = switchControl.signal;
+        decision.switch_gate = switchControl.reason;
+
+        if (switchControl.switched === true && !decision.narrative_bridge) {
             const previousBeat = beats[currentBeatIdx] || null;
-            const targetBeat = beats[decision.stage_idx] || null;
-            decision.narrative_bridge = buildDefaultNarrativeBridge(previousBeat, targetBeat, decision.stage_idx - currentBeatIdx);
+            const targetBeat = beats[lockedBeatIdx] || null;
+            decision.narrative_bridge = buildDefaultNarrativeBridge(previousBeat, targetBeat, Math.abs(lockedBeatIdx - currentBeatIdx));
+        }
+        if (switchControl.switched !== true) {
+            decision.narrative_bridge = '';
         }
 
         if (decision.confidence < 0.35) {
             directorDebug(`low-confidence fallback applied: ${decision.confidence}`);
-            decision.stage_idx = currentBeatIdx;
-            decision.should_advance = false;
-            decision.narrative_bridge = '';
             decision.direction_script = normalizeDirectionScript(
                 decision.direction_script,
-                buildDefaultDirectionScript(beats[currentBeatIdx] || null, beats[currentBeatIdx + 1] || null, false)
+                buildDefaultDirectionScript(
+                    beats[lockedBeatIdx] || null,
+                    beats[lockedBeatIdx + 1] || null,
+                    switchControl.shouldAdvance === true
+                )
             );
         }
 
