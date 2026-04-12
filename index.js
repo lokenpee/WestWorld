@@ -3,9 +3,15 @@ import { extension_settings, renderExtensionTemplateAsync } from '../../../exten
 
 const { saveSettingsDebounced, eventSource, event_types } = scriptApi;
 
-const extensionName = 'storyweaver';
-const setupEventNamespace = '.storyweaver';
-const STORYWEAVER_REPO_URL = 'https://github.com/lokenpee/StoryWeaver';
+const BRAND_NAME = 'WestWorld';
+const LEGACY_BRAND_NAME = 'StoryWeaver';
+const extensionName = 'westworld';
+const legacyExtensionName = 'storyweaver';
+const setupEventNamespace = '.westworld';
+const WESTWORLD_REPO_URL = 'https://github.com/lokenpee/WestWorld';
+const LEGACY_REPO_URL = 'https://github.com/lokenpee/StoryWeaver';
+const WESTWORLD_DIRECTOR_DEBUG_KEY = 'westworld-director-debug';
+const LEGACY_DIRECTOR_DEBUG_KEY = 'storyweaver-director-debug';
 
 const defaultSettings = {
     panelCollapsed: true,
@@ -27,7 +33,8 @@ const directorPromptGate = {
 
 function isDirectorTraceEnabled() {
     try {
-        return localStorage.getItem('storyweaver-director-debug') === 'true';
+        return localStorage.getItem(WESTWORLD_DIRECTOR_DEBUG_KEY) === 'true'
+            || localStorage.getItem(LEGACY_DIRECTOR_DEBUG_KEY) === 'true';
     } catch (_) {
         return false;
     }
@@ -35,16 +42,16 @@ function isDirectorTraceEnabled() {
 
 function directorTrace(message) {
     if (!isDirectorTraceEnabled()) return;
-    console.debug(`[StoryWeaver][DirectorGate] ${message}`);
+    console.debug(`[${BRAND_NAME}][DirectorGate] ${message}`);
 }
 
 function getExtensionFolderName() {
     const match = /\/scripts\/extensions\/third-party\/([^/]+)\//.exec(import.meta.url);
-    return match?.[1] ? decodeURIComponent(match[1]) : 'StoryWeaver';
+    return match?.[1] ? decodeURIComponent(match[1]) : BRAND_NAME;
 }
 
 function normalizeRepoUrl(repoUrl) {
-    const raw = String(repoUrl || STORYWEAVER_REPO_URL).trim();
+    const raw = String(repoUrl || WESTWORLD_REPO_URL).trim();
     if (!raw) return '';
 
     try {
@@ -137,7 +144,7 @@ async function installExtensionFromRepo(repoUrl) {
     return { response, text, data };
 }
 
-async function updateSelfFromRepo(repoUrl = STORYWEAVER_REPO_URL) {
+async function updateSelfFromRepo(repoUrl = WESTWORLD_REPO_URL) {
     const normalizedRepoUrl = normalizeRepoUrl(repoUrl);
     if (!normalizedRepoUrl) {
         throw new Error('仓库地址无效，请检查后重试。');
@@ -145,7 +152,7 @@ async function updateSelfFromRepo(repoUrl = STORYWEAVER_REPO_URL) {
 
     const currentFolder = getExtensionFolderName();
     const repoFolder = getRepoFolderName(normalizedRepoUrl);
-    const candidateFolders = [...new Set([currentFolder, repoFolder].filter(Boolean))];
+    const candidateFolders = [...new Set([currentFolder, repoFolder, BRAND_NAME, LEGACY_BRAND_NAME].filter(Boolean))];
 
     for (const folder of candidateFolders) {
         const { response, text, data } = await updateExtensionByName(folder);
@@ -164,7 +171,11 @@ async function updateSelfFromRepo(repoUrl = STORYWEAVER_REPO_URL) {
         }
     }
 
-    const installResult = await installExtensionFromRepo(normalizedRepoUrl);
+    let installResult = await installExtensionFromRepo(normalizedRepoUrl);
+    if (!installResult.response.ok && normalizedRepoUrl === WESTWORLD_REPO_URL) {
+        // Fallback for users who still host the repository under the legacy name.
+        installResult = await installExtensionFromRepo(LEGACY_REPO_URL);
+    }
     if (installResult.response.ok) {
         return {
             mode: 'install',
@@ -185,7 +196,7 @@ function delay(ms) {
 }
 
 function mountDrawerHtml(html) {
-    const existingWrapper = document.getElementById('storyweaver-wrapper');
+    const existingWrapper = document.getElementById('westworld-wrapper');
 
     const topbarAnchor = $('#extensions-settings-button');
     if (topbarAnchor.length > 0) {
@@ -342,7 +353,7 @@ function registerDirectorPromptHook() {
                 await api.runDirectorBeforeGeneration(eventData);
                 directorTrace('runDirectorBeforeGeneration completed');
             } catch (error) {
-                console.warn('[StoryWeaver] director hook failed:', error?.message || error);
+                console.warn('[WestWorld] director hook failed:', error?.message || error);
             } finally {
                 directorPromptGate.inProgress = false;
                 directorPromptGate.pendingUserSend = false;
@@ -366,24 +377,34 @@ function registerDirectorPromptHook() {
 }
 
 function ensureSettings() {
+    const legacySettings = extension_settings[legacyExtensionName] && typeof extension_settings[legacyExtensionName] === 'object'
+        ? extension_settings[legacyExtensionName]
+        : null;
+
     if (!extension_settings[extensionName]) {
-        extension_settings[extensionName] = { ...defaultSettings };
+        extension_settings[extensionName] = {
+            ...defaultSettings,
+            ...(legacySettings || {}),
+        };
     }
     settings = {
         ...defaultSettings,
+        ...(legacySettings || {}),
         ...extension_settings[extensionName],
     };
     extension_settings[extensionName] = settings;
+    extension_settings[legacyExtensionName] = settings;
 }
 
 function persistSettings() {
     extension_settings[extensionName] = settings;
+    extension_settings[legacyExtensionName] = settings;
     saveSettingsDebounced();
 }
 
 function updateDrawerUI() {
-    const iconEl = document.getElementById('storyweaver-icon');
-    const panelEl = document.getElementById('storyweaver-content-panel');
+    const iconEl = document.getElementById('westworld-icon');
+    const panelEl = document.getElementById('westworld-content-panel');
     if (!iconEl) return;
 
     if (settings.panelCollapsed) {
@@ -408,13 +429,13 @@ async function openTxtToWorldbookPanel() {
         await ensureTxtToWorldbookReady();
         const api = getTxtToWorldbookApiSafe();
         if (!api || typeof api.open !== 'function') {
-            toastr.error('StoryWeaver converter is not ready yet.');
+            toastr.error('WestWorld converter is not ready yet.');
             return;
         }
         api.open();
     } catch (error) {
-        console.error('[StoryWeaver] failed to open TXT converter:', error);
-        toastr.error('StoryWeaver converter failed to load.');
+        console.error('[WestWorld] failed to open TXT converter:', error);
+        toastr.error('WestWorld converter failed to load.');
     }
 }
 
@@ -426,30 +447,35 @@ async function setupUI() {
     try {
         html = await renderExtensionTemplateAsync(`third-party/${extensionFolder}`, 'drawer-component');
     } catch (error) {
-        if (extensionFolder !== 'StoryWeaver') {
-            html = await renderExtensionTemplateAsync('third-party/StoryWeaver', 'drawer-component');
+        if (extensionFolder !== BRAND_NAME) {
+            try {
+                html = await renderExtensionTemplateAsync(`third-party/${BRAND_NAME}`, 'drawer-component');
+            } catch (_fallbackError) {
+                html = await renderExtensionTemplateAsync(`third-party/${LEGACY_BRAND_NAME}`, 'drawer-component');
+            }
         } else {
-            throw error;
+            html = await renderExtensionTemplateAsync(`third-party/${LEGACY_BRAND_NAME}`, 'drawer-component');
         }
     }
 
     if (!html || !String(html).trim()) {
-        throw new Error('StoryWeaver drawer template is empty.');
+        throw new Error('WestWorld drawer template is empty.');
     }
 
     const mounted = await mountDrawerWithRetry(html, 60, 250);
     if (!mounted) {
         // Fallback mount so the icon can still appear even if target selectors change.
-        const existingWrapper = document.getElementById('storyweaver-wrapper');
+        const existingWrapper = document.getElementById('westworld-wrapper');
         if (!existingWrapper) {
             document.body.insertAdjacentHTML('beforeend', html);
         }
-        console.warn('[StoryWeaver] mount target not found, mounted to body fallback.');
+        console.warn('[WestWorld] mount target not found, mounted to body fallback.');
     }
 
     // Rebind with namespace to avoid duplicated handlers on reload.
+    $(document).off('click.storyweaver');
     $(document).off(`click${setupEventNamespace}`);
-    $(document).on(`click${setupEventNamespace}`, '#storyweaver-wrapper .drawer-toggle', async (e) => {
+    $(document).on(`click${setupEventNamespace}`, '#westworld-wrapper .drawer-toggle', async (e) => {
         e.stopPropagation();
         await openTxtToWorldbookPanel();
     });
@@ -460,22 +486,23 @@ async function bootstrap() {
     try {
         await setupUI();
     } catch (error) {
-        console.error('[StoryWeaver] UI mount failed:', error);
-        toastr.error('StoryWeaver UI mount failed. Please reload extensions.');
+        console.error('[WestWorld] UI mount failed:', error);
+        toastr.error('WestWorld UI mount failed. Please reload extensions.');
     }
 
     try {
         await ensureTxtToWorldbookReady();
         registerDirectorPromptHook();
-        window.StoryWeaver = {
+        window.WestWorld = {
             openTxtConverter: openTxtToWorldbookPanel,
             getTxtToWorldbookApi: getTxtToWorldbookApiSafe,
             updateSelfFromRepo,
         };
-        console.log('[StoryWeaver] Plugin initialized successfully');
+        window.StoryWeaver = window.WestWorld;
+        console.log('[WestWorld] Plugin initialized successfully');
     } catch (error) {
-        console.error('[StoryWeaver] txtToWorldbook init failed:', error);
-        toastr.error('StoryWeaver failed to initialize TXT converter.');
+        console.error('[WestWorld] txtToWorldbook init failed:', error);
+        toastr.error('WestWorld failed to initialize TXT converter.');
     }
 }
 

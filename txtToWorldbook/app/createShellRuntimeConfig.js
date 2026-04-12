@@ -203,7 +203,7 @@ export function createShellRuntimeConfig(deps = {}) {
             applyDefaultWorldbookEntries,
             saveCurrentSettings,
         },
-        categoryLightStorageKey: 'storyweaverTxtToWorldbookSettings',
+        categoryLightStorageKey: 'westworldTxtToWorldbookSettings',
         onEntryConfigChanged,
         onHashFallback,
     };

@@ -1,13 +1,34 @@
 ﻿export function createMemoryHistoryDB(AppState, Logger) {
     const MemoryHistoryDB = {
-        dbName: 'StoryWeaverTxtToWorldbookDB',
+        dbName: 'WestWorldTxtToWorldbookDB',
+        legacyDbName: 'StoryWeaverTxtToWorldbookDB',
         storeName: 'history',
         metaStoreName: 'meta',
         stateStoreName: 'state',
         rollStoreName: 'rolls',
         categoriesStoreName: 'categories',
         entryRollStoreName: 'entryRolls', // 新增：条目级别Roll历史
+        resolvedDbName: '',
         db: null,
+
+        async resolveDbName() {
+            if (this.resolvedDbName) return this.resolvedDbName;
+
+            try {
+                if (typeof indexedDB.databases === 'function') {
+                    const dbList = await indexedDB.databases();
+                    const hasNew = dbList.some((item) => item?.name === this.dbName);
+                    const hasLegacy = dbList.some((item) => item?.name === this.legacyDbName);
+                    this.resolvedDbName = hasNew ? this.dbName : (hasLegacy ? this.legacyDbName : this.dbName);
+                    return this.resolvedDbName;
+                }
+            } catch (_e) {
+                // Ignore and keep default database name.
+            }
+
+            this.resolvedDbName = this.dbName;
+            return this.resolvedDbName;
+        },
 
         /**
          * openDB
@@ -16,8 +37,9 @@
          */
         async openDB() {
             if (this.db) return this.db;
+            const activeDbName = await this.resolveDbName();
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open(this.dbName, 7); // 升级版本号
+                const request = indexedDB.open(activeDbName, 7); // 升级版本号
                 request.onupgradeneeded = (event) => {
                     const db = event.target.result;
                     let historyStore;

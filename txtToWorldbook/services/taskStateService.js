@@ -20,7 +20,8 @@ export function createTaskStateService(deps = {}) {
         updateWorldbookPreview,
     } = deps;
 
-    const TASK_STATE_TYPE = 'StoryWeaver.taskState';
+    const TASK_STATE_TYPE = 'WestWorld.taskState';
+    const LEGACY_TASK_STATE_TYPE = 'StoryWeaver.taskState';
     const TASK_STATE_VERSION = '3.2.0';
     const SPLIT_TYPES = new Set([
         'scene_change',
@@ -254,6 +255,10 @@ export function createTaskStateService(deps = {}) {
             try {
                 const content = await file.text();
                 const state = JSON.parse(content);
+                const type = String(state.type || '').trim();
+                if (type && type !== TASK_STATE_TYPE && type !== LEGACY_TASK_STATE_TYPE) {
+                    throw new Error('不是有效的工程包文件');
+                }
                 if (!state.memoryQueue || !Array.isArray(state.memoryQueue)) throw new Error('无效的任务状态文件');
 
                 const normalizedQueue = normalizeMemoryQueue(state.memoryQueue);

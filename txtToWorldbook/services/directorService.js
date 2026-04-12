@@ -40,6 +40,12 @@ export function createDirectorService(deps = {}) {
         return `...${plain.slice(Math.max(0, plain.length - maxLen))}`;
     }
 
+    function toHeadText(text, maxLen = 200) {
+        const plain = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!plain) return '';
+        return plain.length > maxLen ? `${plain.slice(0, maxLen)}...` : plain;
+    }
+
     function normalizeActionSegment(text, maxLen = 120) {
         const plain = String(text || '')
             .replace(/[“”"']/g, '')
@@ -295,7 +301,7 @@ export function createDirectorService(deps = {}) {
     function isAssistantChatItem(item) {
         if (resolveChatItemRole(item) !== 'assistant') return false;
         if (item?.is_system === true) return false;
-        if (item?.is_storyweaver_director === true) return false;
+        if (item?.is_westworld_director === true || item?.is_storyweaver_director === true) return false;
         if (item?.prefix === true) return false;
         return true;
     }
@@ -788,12 +794,17 @@ export function createDirectorService(deps = {}) {
         if (!Array.isArray(chat)) return;
         for (let i = chat.length - 1; i >= 0; i--) {
             const item = chat[i];
-            if (item?.is_storyweaver_director === true) {
+            if (item?.is_westworld_director === true || item?.is_storyweaver_director === true) {
                 chat.splice(i, 1);
                 continue;
             }
             const itemContent = String(item?.content || item?.mes || '');
-            if (itemContent.includes('# StoryWeaver 导演提示（宽松模式）') || itemContent.includes('# StoryWeaver 导演提示（硬导演模式）')) {
+            if (
+                itemContent.includes('# StoryWeaver 导演提示（宽松模式）')
+                || itemContent.includes('# StoryWeaver 导演提示（硬导演模式）')
+                || itemContent.includes('# WestWorld 导演提示（宽松模式）')
+                || itemContent.includes('# WestWorld 导演提示（硬导演模式）')
+            ) {
                 chat.splice(i, 1);
             }
         }
@@ -809,6 +820,25 @@ export function createDirectorService(deps = {}) {
         const switchedStage = stageIdx !== previousStageIdx;
         const currentOriginal = String(currentBeat?.original_text || '').trim();
         const currentOriginalSection = currentOriginal || '（当前节拍缺少原文，请优先遵循导演演绎指导并保持语气连续）';
+        const nextBeatSummary = toShortText(
+            decision?.next_beat_summary
+            || nextBeat?.summary
+            || '',
+            120
+        ) || '（当前已是最后节拍）';
+        const nextBeatEntryEvent = toShortText(
+            decision?.next_beat_entry_event
+            || nextBeat?.entryEvent
+            || '',
+            140
+        ) || '（无）';
+        const nextBeatPreview200 = toHeadText(
+            decision?.next_beat_preview_200
+            || nextBeat?.original_text
+            || '',
+            220
+        ) || '（当前已是最后节拍，无下一节拍原文预览）';
+        const currentExitCondition = toShortText(currentBeat?.exitCondition || '', 140) || '无明确退出事件';
         const directionContext = decision?.direction_context && typeof decision.direction_context === 'object'
             ? decision.direction_context
             : buildDirectionContext({
@@ -835,7 +865,7 @@ export function createDirectorService(deps = {}) {
             .map((step, idx) => `  ${idx + 1}. ${step}`);
 
         return [
-            '# StoryWeaver 导演->演员执行单（硬导演模式）',
+            '# WestWorld 导演->演员执行单（硬导演模式）',
             '导演：演员秋青子就位！以下内容是导演给你的系统级执行指令，不是给用户看的解释。',
             `- 当前阶段事件梗概: ${currentBeat?.id || `b${stageIdx + 1}`} ${currentBeat?.summary || '当前节拍'}`,
             '- 输出要求: 按当前预设格式输出剧情正文内容，不要复述本执行单，不要解释规则。',
@@ -855,6 +885,13 @@ export function createDirectorService(deps = {}) {
             switchedStage
                 ? '- 执行要求: 本回合发生切拍时，先用1-2句完成过渡/回接，再进入动作链；终点只做临时收束，不等于继续切拍。'
                 : '- 执行要求: 严格停留在当前节拍内推进动作链；终点只做临时收束，不得跳出当前节拍。',
+            '',
+            '## 3) 下一节拍预览（仅参考，禁止提前展开）',
+            `- 下一节拍摘要: ${nextBeatSummary}`,
+            `- 下一节拍原文前200字: ${nextBeatPreview200}`,
+            `- 当前节拍退出事件: ${currentExitCondition}`,
+            '- 结尾软要求: 先对照“导演给出的终点”和“当前节拍退出事件”。仅当两者完全吻合或高度吻合时，最后1-2句才可做趋势性引出，承接下一节拍。',
+            '- 结尾限制: 若终点与退出事件不吻合，禁止引出下一节拍，继续在当前节拍内收束。',
             '',
             `【起笔复述】第一句必须从【起点】起笔：${directionScript.start}`,
         ].join('\n');
@@ -958,6 +995,21 @@ export function createDirectorService(deps = {}) {
         decision.latest_assistant_message = toTailText(latestAssistantMessage || '', 200);
         decision.latest_user_message = toShortText(latestUserMessage || '', 220);
 
+        const nextBeat = beats[lockedBeatIdx + 1] || null;
+        const nextBeatSummary = toShortText(nextBeat?.summary || '', 120);
+        const nextBeatEntryEvent = toShortText(nextBeat?.entryEvent || '', 140);
+        const nextBeatPreview200 = toHeadText(nextBeat?.original_text || '', 200)
+            || (nextBeatSummary ? `摘要：${nextBeatSummary}` : '');
+
+        decision.next_beat_summary = nextBeatSummary || '';
+        decision.next_beat_entry_event = nextBeatEntryEvent || '';
+        decision.next_beat_preview_200 = nextBeatPreview200 || '';
+        decision.direction_context = {
+            ...decision.direction_context,
+            next_beat_summary: nextBeatSummary || '',
+            next_beat_entry_event: nextBeatEntryEvent || '',
+        };
+
         const decisionActionChainSteps = splitActionChain(decision?.direction_script?.action_chain || '', 4);
         const hasValidActionChain = decisionActionChainSteps.length >= 2;
         const hasValidSteps = Array.isArray(decision?.direction_script?.steps) && decision.direction_script.steps.length >= 2;
@@ -996,6 +1048,7 @@ export function createDirectorService(deps = {}) {
             is_user: false,
             is_system: true,
             mes: injection,
+            is_westworld_director: true,
             is_storyweaver_director: true,
         });
         directorInfo(`注入完成 chapter=${chapterIndex + 1}, activeBeat=${decision.stage_idx + 1}`);

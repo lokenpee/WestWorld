@@ -1,13 +1,16 @@
 export function createCategoryLightService(deps) {
     const {
         AppState,
-        storageKey = 'storyweaverTxtToWorldbookSettings',
+        storageKey = 'westworldTxtToWorldbookSettings',
     } = deps;
+    const legacyStorageKey = 'storyweaverTxtToWorldbookSettings';
 
     function saveCategoryLightSettings() {
         AppState.settings.categoryLightSettings = { ...AppState.config.categoryLight };
         try {
-            localStorage.setItem(storageKey, JSON.stringify(AppState.settings));
+            const serialized = JSON.stringify(AppState.settings);
+            localStorage.setItem(storageKey, serialized);
+            localStorage.setItem(legacyStorageKey, serialized);
         } catch (e) { }
     }
 

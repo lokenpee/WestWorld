@@ -79,6 +79,7 @@ export function createExportFormatService(deps = {}) {
                     matchWholeWords: false,
                     automationId: '',
                     role: 0,
+                    westworldRoleType: category === '角色' ? (normalizeRoleType(itemData['角色类型']) || '普通配角') : '',
                     storyweaverRoleType: category === '角色' ? (normalizeRoleType(itemData['角色类型']) || '普通配角') : '',
                     vectorized: false,
                     sticky: null,
@@ -90,7 +91,7 @@ export function createExportFormatService(deps = {}) {
 
         return {
             entries,
-            originalData: { name: '小说转换的世界书', description: '由TXT转世界书功能生成', version: 1, author: 'StoryWeaver' },
+            originalData: { name: '小说转换的世界书', description: '由TXT转世界书功能生成', version: 1, author: 'WestWorld' },
         };
     }
 

@@ -23,7 +23,7 @@ export function createShellRuntime(deps = {}) {
         createModalEventBinderDeps,
         fileImportDeps,
         worldbookViewDeps,
-        categoryLightStorageKey = 'storyweaverTxtToWorldbookSettings',
+        categoryLightStorageKey = 'westworldTxtToWorldbookSettings',
         onEntryConfigChanged,
         onHashFallback,
     } = deps;

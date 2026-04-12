@@ -3,7 +3,7 @@
 *
 * @file txtToWorldbook/main.js
 * @version 1.5.0
-* @author StoryWeaver
+* @author WestWorld
 * @license MIT
 *
 * @description
@@ -32,11 +32,11 @@
  * - 第八区：初始化与导出 (~200行)
  *
  * @example
- * // 基本使用
- * window.StoryWeaverTxtToWorldbook.open();
+* // 基本使用
+* window.WestWorldTxtToWorldbook.open();
  *
- * // 获取世界书数据
- * const worldbook = window.StoryWeaverTxtToWorldbook.getWorldbook();
+* // 获取世界书数据
+* const worldbook = window.WestWorldTxtToWorldbook.getWorldbook();
  *
  * @typedef {Object} MemoryItem
  * @property {string} title - 记忆标题
@@ -134,7 +134,8 @@ import { createWorldbookViewRuntime } from './ui/createWorldbookViewRuntime.js';
 import { createChapterExperienceView } from './ui/chapterExperienceView.js';
 import { ensureModalStyles } from './ui/modalStyles.js';
 
-const STORYWEAVER_TTW_API_KEY = 'StoryWeaverTxtToWorldbook';
+const WESTWORLD_TTW_API_KEY = 'WestWorldTxtToWorldbook';
+const LEGACY_STORYWEAVER_TTW_API_KEY = 'StoryWeaverTxtToWorldbook';
 
 (function () {
 'use strict';
@@ -414,8 +415,10 @@ const {
 
         const updateBtn = document.getElementById('ttw-update-plugin-btn');
         const oldText = updateBtn ? updateBtn.textContent : '';
-        const repoUrl = 'https://github.com/lokenpee/StoryWeaver';
-        const updater = (typeof window !== 'undefined') ? window.StoryWeaver?.updateSelfFromRepo : null;
+        const repoUrl = 'https://github.com/lokenpee/WestWorld';
+        const updater = (typeof window !== 'undefined')
+            ? (window.WestWorld?.updateSelfFromRepo || window.StoryWeaver?.updateSelfFromRepo)
+            : null;
 
         if (typeof updater !== 'function') {
             ErrorHandler.showUserError('当前环境不支持快捷更新，请到插件管理页手动更新。');
@@ -1333,9 +1336,10 @@ open = shellRuntimeBindings.open;
     }));
     publicApi.runDirectorBeforeGeneration = (...args) => directorService.runDirectorBeforeGeneration(...args);
     publicApi.isDirectorEnabled = () => AppState.settings.directorEnabled !== false;
-    window[STORYWEAVER_TTW_API_KEY] = publicApi;
+    window[WESTWORLD_TTW_API_KEY] = publicApi;
+    window[LEGACY_STORYWEAVER_TTW_API_KEY] = publicApi;
 
-	Logger.info('Module', '📚 StoryWeaver TxtToWorldbook 已加载');
+	Logger.info('Module', '📚 WestWorld TxtToWorldbook 已加载');
 	Logger.info('Module', '架构重构: AppState统一状态 | Logger日志系统 | EventDelegate事件委托 | ModalFactory模态框工厂');
 	Logger.info('Module', '性能优化: TokenCache缓存 | PerfUtils防抖节流 | DOM批量更新');
 	Logger.info('Module', '代码质量: ErrorHandler统一错误处理 | JSDoc完整文档 | 函数命名规范化');
@@ -1357,7 +1361,7 @@ export async function initTxtToWorldbookBridge() {
 
 export function getTxtToWorldbookApi() {
     if (typeof window === 'undefined') return null;
-    return window[STORYWEAVER_TTW_API_KEY] || null;
+    return window[WESTWORLD_TTW_API_KEY] || window[LEGACY_STORYWEAVER_TTW_API_KEY] || null;
 }
 
 export default {

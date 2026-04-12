@@ -4,7 +4,7 @@ export function ensureModalStyles() {
     styles.id = 'ttw-styles';
     styles.textContent = `
         /* ============================================
-           StoryWeaver TXT Converter - 深色主题样式
+              WestWorld TXT Converter - 深色主题样式
            与外部抽屉组件保持一致的设计风格
            ============================================ */
         

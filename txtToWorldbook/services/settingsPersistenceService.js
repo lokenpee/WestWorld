@@ -12,6 +12,8 @@ export function createSettingsPersistenceService(deps) {
         '第\\s*[零一二三四五六七八九十百千万0-9]+\\s*[章回卷节部篇]',
     ]);
     const RECOMMENDED_CHAPTER_PATTERN = '^[\\s\\u3000\\uFEFF]*第\\s*[零一二三四五六七八九十百千万0-9]+\\s*[章回卷节部篇][^\\n\\r]{0,80}';
+    const SETTINGS_STORAGE_KEY = 'westworldTxtToWorldbookSettings';
+    const LEGACY_SETTINGS_STORAGE_KEY = 'storyweaverTxtToWorldbookSettings';
 
     function migrateLegacyChapterPattern(pattern) {
         if (!pattern || typeof pattern !== 'string') return pattern;
@@ -118,7 +120,10 @@ export function createSettingsPersistenceService(deps) {
         AppState.settings.customApiMaxTokens = AppState.settings.mainApi.maxTokens;
 
         try {
-            localStorage.setItem('storyweaverTxtToWorldbookSettings', JSON.stringify(AppState.settings));
+            const serialized = JSON.stringify(AppState.settings);
+            localStorage.setItem(SETTINGS_STORAGE_KEY, serialized);
+            // Keep legacy key in sync for backward compatibility.
+            localStorage.setItem(LEGACY_SETTINGS_STORAGE_KEY, serialized);
         } catch (e) { }
 
         AppState.settings.allowRecursion = document.getElementById('ttw-allow-recursion')?.checked ?? false;
@@ -129,7 +134,8 @@ export function createSettingsPersistenceService(deps) {
 
     function loadSavedSettings() {
         try {
-            const saved = localStorage.getItem('storyweaverTxtToWorldbookSettings');
+            const saved = localStorage.getItem(SETTINGS_STORAGE_KEY)
+                || localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
                 AppState.settings = { ...defaultSettings, ...parsed };

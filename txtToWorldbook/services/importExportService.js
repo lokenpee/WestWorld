@@ -62,7 +62,7 @@ export function createImportExportService(deps = {}) {
                     addMemo: entry.addMemo !== undefined ? entry.addMemo : true,
                     scan_depth: entry.scanDepth !== undefined ? entry.scanDepth : null,
                     match_whole_words: entry.matchWholeWords !== undefined ? entry.matchWholeWords : false,
-                    character_role_type: entry.storyweaverRoleType || '',
+                    character_role_type: entry.westworldRoleType || entry.storyweaverRoleType || '',
                 },
             }));
 
@@ -89,8 +89,8 @@ export function createImportExportService(deps = {}) {
                         extensions: {},
                         entries: v2Entries,
                     },
-                    tags: ['StoryWeaver', '自动生成'],
-                    creator: 'StoryWeaver',
+                    tags: ['WestWorld', '自动生成'],
+                    creator: 'WestWorld',
                     character_version: '1.0',
                     extensions: {
                         talkativeness: '0.5',
@@ -199,7 +199,7 @@ export function createImportExportService(deps = {}) {
             .toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
             .replace(/[:/\s]/g, '')
             .replace(/,/g, '-');
-        const fileName = `StoryWeaver-TxtToWorldbook-配置-${timeString}.json`;
+        const fileName = `WestWorld-TxtToWorldbook-配置-${timeString}.json`;
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

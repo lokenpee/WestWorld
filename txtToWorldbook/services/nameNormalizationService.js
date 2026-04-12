@@ -81,6 +81,44 @@ function normalizeFieldName(fieldName) {
     return compact;
 }
 
+function getCanonicalDisplayFieldName(fieldKey, fallbackName = '') {
+    switch (fieldKey) {
+        case '名称':
+            return '名称';
+        case '话语示例':
+            return '话语示例';
+        case '背景故事':
+            return '背景';
+        case '外貌':
+            return '外貌';
+        case '能力':
+            return '技能';
+        case '性格':
+            return '性格';
+        default: {
+            const cleaned = safeString(fallbackName)
+                .trim()
+                .replace(/(?:补充|扩展|说明|信息)\d*$/g, '')
+                .trim();
+            return cleaned || fieldKey;
+        }
+    }
+}
+
+function normalizeContinuationLine(line) {
+    let value = safeString(line).trim();
+    value = value.replace(/^[-*•]\s*/u, '');
+    value = value.replace(/^\(?\d{1,3}[.)、]\s*/u, '');
+    value = value.replace(/^[（(][一二三四五六七八九十百千万\d]+[）)]\s*/u, '');
+    value = value.replace(/^[一二三四五六七八九十百千万]+、\s*/u, '');
+    return value.trim();
+}
+
+function isIgnorablePlaceholderValue(value) {
+    const compact = normalizeTextForComparison(value);
+    return /^(无新增|暂无新增|暂无|同上|见上|无|略)$/u.test(compact);
+}
+
 function isValueNearDuplicate(existingValue, incomingValue) {
     const left = normalizeTextForComparison(existingValue);
     const right = normalizeTextForComparison(incomingValue);
@@ -93,6 +131,7 @@ function isValueNearDuplicate(existingValue, incomingValue) {
 function addUniqueValue(bucket, value) {
     const trimmed = safeString(value).trim();
     if (!trimmed) return;
+    if (isIgnorablePlaceholderValue(trimmed)) return;
 
     const duplicatedIndex = bucket.values.findIndex((item) => isValueNearDuplicate(item, trimmed));
     if (duplicatedIndex === -1) {
@@ -112,6 +151,7 @@ function parseStructuredContent(content) {
     const freeText = [];
     const seenFreeText = new Set();
     let hasField = false;
+    let currentFieldKey = '';
 
     for (const rawLine of lines) {
         const line = rawLine.trim();
@@ -126,12 +166,41 @@ function parseStructuredContent(content) {
 
             hasField = true;
             if (!fields.has(fieldKey)) {
-                fields.set(fieldKey, { name: fieldName, values: [] });
+                fields.set(fieldKey, { name: getCanonicalDisplayFieldName(fieldKey, fieldName), values: [] });
                 fieldOrder.push(fieldKey);
             }
             addUniqueValue(fields.get(fieldKey), fieldValue);
+            currentFieldKey = fieldKey;
             continue;
         }
+
+        const fieldHeaderMatch = line.match(/^(?:[-*•\d.()（）一二三四五六七八九十、\s]+)?(?:\*\*)?\s*([^:：\n]{1,40}?)\s*(?:\*\*)?\s*[:：]\s*$/);
+        if (fieldHeaderMatch) {
+            const fieldName = fieldHeaderMatch[1].trim();
+            const fieldKey = normalizeFieldName(fieldName);
+            if (!fieldKey) {
+                currentFieldKey = '';
+                continue;
+            }
+
+            hasField = true;
+            if (!fields.has(fieldKey)) {
+                fields.set(fieldKey, { name: getCanonicalDisplayFieldName(fieldKey, fieldName), values: [] });
+                fieldOrder.push(fieldKey);
+            }
+            currentFieldKey = fieldKey;
+            continue;
+        }
+
+        if (currentFieldKey && fields.has(currentFieldKey)) {
+            const continuation = normalizeContinuationLine(line);
+            if (continuation) {
+                addUniqueValue(fields.get(currentFieldKey), continuation);
+                continue;
+            }
+        }
+
+        currentFieldKey = '';
 
         const normalized = normalizeTextForComparison(line);
         if (!normalized || seenFreeText.has(normalized)) continue;
@@ -171,10 +240,13 @@ function buildStructuredContent(parsed) {
         const bucket = parsed.fields.get(key);
         if (!bucket || bucket.values.length === 0) continue;
 
-        output.push(`${bucket.name}: ${bucket.values[0]}`);
-        for (let i = 1; i < bucket.values.length; i++) {
-            output.push(`${bucket.name}补充${i}: ${bucket.values[i]}`);
+        if (bucket.values.length === 1) {
+            output.push(`${bucket.name}: ${bucket.values[0]}`);
+            continue;
         }
+
+        const mergedInline = bucket.values.join('；');
+        output.push(`${bucket.name}: ${mergedInline}`);
     }
 
     if (parsed.freeText.length > 0) {

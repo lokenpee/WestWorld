@@ -1,5 +1,5 @@
 /* ============================================
-   StoryWeaver - 深色主题样式
+  WestWorld - 深色主题样式
    参考 st-beat-tracker-main 设计风格
    ============================================ */
 
@@ -27,38 +27,38 @@
 }
 
 /* --- [SECTION 2] 抽屉组件基础布局 --- */
-#storyweaver-wrapper {
+#westworld-wrapper {
   margin-top: 8px;
 }
 
-#storyweaver-wrapper .drawer-toggle {
+#westworld-wrapper .drawer-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
 
-#storyweaver-wrapper #storyweaver-icon {
+#westworld-wrapper #westworld-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   transition: color 0.2s ease;
 }
 
-#storyweaver-wrapper #storyweaver-icon.openIcon {
+#westworld-wrapper #westworld-icon.openIcon {
   color: var(--sw-primary-accent);
 }
 
-#storyweaver-wrapper #storyweaver-icon.closedIcon {
+#westworld-wrapper #westworld-icon.closedIcon {
   color: var(--sw-text-medium);
 }
 
-#storyweaver-wrapper #storyweaver-icon:hover {
+#westworld-wrapper #westworld-icon:hover {
   color: var(--sw-primary-accent-hover);
 }
 
 /* --- [SECTION 3] 内容面板样式 --- */
-#storyweaver-wrapper #storyweaver-content-panel {
+#westworld-wrapper #westworld-content-panel {
   display: none;
   position: absolute;
   top: var(--topBarBlockSize, 38px);
@@ -76,12 +76,12 @@
   overflow: hidden;
 }
 
-#storyweaver-wrapper #storyweaver-content-panel.openDrawer {
+#westworld-wrapper #westworld-content-panel.openDrawer {
   display: block;
 }
 
 /* --- [SECTION 4] 面板头部 --- */
-#storyweaver-wrapper .drawer-header {
+#westworld-wrapper .drawer-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -90,7 +90,7 @@
   border-bottom: 1px solid var(--sw-border-color);
 }
 
-#storyweaver-wrapper .drawer-header h3 {
+#westworld-wrapper .drawer-header h3 {
   margin: 0;
   font-size: 1.1em;
   font-weight: 600;
@@ -99,11 +99,11 @@
   gap: var(--sw-space-8);
 }
 
-#storyweaver-wrapper .drawer-header h3 i {
+#westworld-wrapper .drawer-header h3 i {
   color: var(--sw-primary-accent);
 }
 
-#storyweaver-wrapper .sw-version {
+#westworld-wrapper .sw-version {
   font-size: 0.8em;
   color: var(--sw-text-dim);
   padding: 2px 8px;
@@ -222,7 +222,7 @@
 }
 
 /* --- [SECTION 9] 内容面板尺寸控制 --- */
-#storyweaver-wrapper.drawer .drawer-content {
+#westworld-wrapper.drawer .drawer-content {
   width: min(480px, 92vw);
 }
 
@@ -246,7 +246,7 @@
 
 /* --- [SECTION 11] 响应式适配 --- */
 @media (max-width: 680px) {
-  #storyweaver-wrapper.drawer .drawer-content {
+  #westworld-wrapper.drawer .drawer-content {
     width: 96vw;
     left: 2vw;
     right: 2vw;
@@ -262,7 +262,7 @@
 }
 
 @media (max-width: 400px) {
-  #storyweaver-wrapper .drawer-header h3 {
+  #westworld-wrapper .drawer-header h3 {
     font-size: 1em;
   }
   

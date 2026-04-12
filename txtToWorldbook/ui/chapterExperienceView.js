@@ -1135,6 +1135,8 @@ export function createChapterExperienceView(deps = {}) {
         const openingMessage = {
             is_user: false,
             mes: text,
+            _westworld_auto_opening: true,
+            _westworld_chapter: index + 1,
             _storyweaver_auto_opening: true,
             _storyweaver_chapter: index + 1,
             _generatedAt: Date.now(),
