@@ -16,6 +16,9 @@ export function createFileImportService(deps = {}) {
         saveCurrentSettings,
     } = deps;
 
+    const INLINE_CHAPTER_MARKER_REGEX = /第\s*[零一二三四五六七八九十百千万两〇0-9]+\s*[章回卷节部篇]/giu;
+    const INLINE_CHAPTER_BOUNDARY_CHAR_REGEX = /[。！？!?；;，,、”’」』）)\]】》〉]/u;
+
     async function handleFileSelect(file) {
         if (!file.name.endsWith('.txt')) {
             ErrorHandler.showUserError('请选择TXT文件');
@@ -96,13 +99,99 @@ export function createFileImportService(deps = {}) {
         return true;
     }
 
+    function getPreviousVisibleChar(rawContent, index) {
+        if (!Number.isInteger(index) || index <= 0) return '';
+
+        let cursor = index - 1;
+        while (cursor >= 0) {
+            const ch = rawContent[cursor];
+            if (!(/[\s\u3000\uFEFF]/.test(ch))) return ch;
+            cursor -= 1;
+        }
+        return '';
+    }
+
+    function isLikelyInlineChapterStart(rawContent, index) {
+        if (!Number.isInteger(index) || index < 0) return false;
+        if (isLikelyChapterLineStart(rawContent, index)) return true;
+
+        const prevChar = getPreviousVisibleChar(rawContent, index);
+        return INLINE_CHAPTER_BOUNDARY_CHAR_REGEX.test(prevChar);
+    }
+
+    function normalizeInlineChapterMarkers(rawContent) {
+        const text = typeof rawContent === 'string' ? rawContent : String(rawContent || '');
+        if (!text) return text;
+
+        let result = '';
+        let cursor = 0;
+        let changed = false;
+
+        for (const match of text.matchAll(INLINE_CHAPTER_MARKER_REGEX)) {
+            const index = Number.isInteger(match.index) ? match.index : -1;
+            if (index < 0) continue;
+
+            const marker = match[0];
+            result += text.slice(cursor, index);
+
+            const shouldInsertBreak = !isLikelyChapterLineStart(text, index)
+                && isLikelyInlineChapterStart(text, index)
+                && !result.endsWith('\n')
+                && !result.endsWith('\r');
+
+            if (shouldInsertBreak) {
+                result += '\n';
+                changed = true;
+            }
+
+            result += marker;
+            cursor = index + marker.length;
+        }
+
+        if (cursor === 0) return text;
+        result += text.slice(cursor);
+        return changed ? result : text;
+    }
+
+    function extractChapterCapture(match) {
+        if (!match || typeof match[0] !== 'string') {
+            return { capturedText: '', offsetInFullMatch: 0 };
+        }
+
+        const fullMatch = match[0];
+        for (let i = 1; i < match.length; i++) {
+            const captured = typeof match[i] === 'string' ? match[i] : '';
+            if (!captured) continue;
+
+            const offset = fullMatch.indexOf(captured);
+            if (offset >= 0) {
+                return { capturedText: captured, offsetInFullMatch: offset };
+            }
+        }
+
+        return { capturedText: fullMatch, offsetInFullMatch: 0 };
+    }
+
+    function getChapterMatchStartIndex(match) {
+        const baseIndex = Number.isInteger(match?.index) ? match.index : 0;
+        const capture = extractChapterCapture(match);
+        return baseIndex + capture.offsetInFullMatch;
+    }
+
+    function getChapterMatchTitle(match) {
+        return extractChapterCapture(match).capturedText || '';
+    }
+
     function detectChapterMatches(rawContent, regexPattern) {
         const chapterRegex = new RegExp(regexPattern, 'gm');
         const rawMatches = [...rawContent.matchAll(chapterRegex)];
         if (rawMatches.length === 0) return [];
 
-        const lineStartMatches = rawMatches.filter((m) => isLikelyChapterLineStart(rawContent, m.index));
-        return lineStartMatches.length > 0 ? lineStartMatches : rawMatches;
+        const boundaryMatches = rawMatches.filter((m) => {
+            const matchStart = getChapterMatchStartIndex(m);
+            return isLikelyInlineChapterStart(rawContent, matchStart);
+        });
+        return boundaryMatches.length > 0 ? boundaryMatches : rawMatches;
     }
 
     function splitContentIntoMemory(content) {
@@ -111,17 +200,22 @@ export function createFileImportService(deps = {}) {
         let shouldMergeTinyChunks = true;
         AppState.memory.queue = [];
 
-        const matches = detectChapterMatches(content, AppState.config.chapterRegex.pattern);
+        // Normalize inline chapter markers like “……」第二章” into line-start chapter headers.
+        const normalizedContent = normalizeInlineChapterMarkers(content);
+
+        const matches = detectChapterMatches(normalizedContent, AppState.config.chapterRegex.pattern);
 
         if (matches.length > 0) {
             shouldMergeTinyChunks = false;
             const chapters = [];
 
             for (let i = 0; i < matches.length; i++) {
-                const startIndex = matches[i].index;
-                const endIndex = i < matches.length - 1 ? matches[i + 1].index : content.length;
-                const chapterContent = content.slice(startIndex, endIndex);
-                chapters.push({ title: matches[i][0], content: chapterContent });
+                const startIndex = getChapterMatchStartIndex(matches[i]);
+                const endIndex = i < matches.length - 1
+                    ? getChapterMatchStartIndex(matches[i + 1])
+                    : normalizedContent.length;
+                const chapterContent = normalizedContent.slice(startIndex, endIndex);
+                chapters.push({ title: getChapterMatchTitle(matches[i]), content: chapterContent });
             }
 
             let chunkIndex = 1;
@@ -160,21 +254,21 @@ export function createFileImportService(deps = {}) {
             let i = 0;
             let chunkIndex = 1;
 
-            while (i < content.length) {
-                let endIndex = Math.min(i + chunkSize, content.length);
-                if (endIndex < content.length) {
-                    const paragraphBreak = content.lastIndexOf('\n\n', endIndex);
+            while (i < normalizedContent.length) {
+                let endIndex = Math.min(i + chunkSize, normalizedContent.length);
+                if (endIndex < normalizedContent.length) {
+                    const paragraphBreak = normalizedContent.lastIndexOf('\n\n', endIndex);
                     if (paragraphBreak > i + chunkSize * 0.5) {
                         endIndex = paragraphBreak + 2;
                     } else {
-                        const sentenceBreak = content.lastIndexOf('。', endIndex);
+                        const sentenceBreak = normalizedContent.lastIndexOf('。', endIndex);
                         if (sentenceBreak > i + chunkSize * 0.5) {
                             endIndex = sentenceBreak + 1;
                         }
                     }
                 }
 
-                AppState.memory.queue.push(createMemoryChunk(content.slice(i, endIndex), chunkIndex, `第${chunkIndex}章`));
+                AppState.memory.queue.push(createMemoryChunk(normalizedContent.slice(i, endIndex), chunkIndex, `第${chunkIndex}章`));
                 i = endIndex;
                 chunkIndex++;
             }

@@ -1,5 +1,5 @@
 ﻿export const DEFAULT_CHAPTER_REGEX = {
-    pattern: '^[\\s\\u3000\\uFEFF]*第\\s*[零一二三四五六七八九十百千万0-9]+\\s*[章回卷节部篇][^\\n\\r]{0,80}',
+    pattern: '(?:^|[^\\w\\n\\r])([\\s\\u3000\\uFEFF]*第\\s*[零一二三四五六七八九十百千万0-9]+\\s*[章回卷节部篇])[^\\n\\r]{0,80}',
     useCustomRegex: false
 };
 

@@ -65,7 +65,7 @@ ${buildApiConfigCard('director', '🎬 导演AI配置')}
     </div>`;
 }
 
-const PLUGIN_VERSION = 'v3.0';
+const PLUGIN_VERSION = 'v3.1';
 
 function buildPluginUpdateHtml() {
     return '';
@@ -118,7 +118,7 @@ function buildChapterRegexHtml() {
     return `
     <div class="ttw-setting-card" style="background:rgba(230,126,34,0.1);border:1px solid rgba(230,126,34,0.3);">
         <div style="font-weight:bold;color:#e67e22;margin-bottom:10px;">📖 章回正则设置</div>
-        <div class="ttw-setting-hint" style="margin-bottom:8px;">自定义章节检测正则表达式</div>
+        <div class="ttw-setting-hint" style="margin-bottom:8px;">自定义章节检测正则表达式（支持自动整理句中“第X章/第X卷”到段首后再检测）</div>
         <input type="text" id="ttw-chapter-regex" class="ttw-input" value="^[\\s\\u3000\\uFEFF]*第\\s*[零一二三四五六七八九十百千万0-9]+\\s*[章回卷节部篇][^\\n\\r]{0,80}" style="margin-bottom:8px;">
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="ttw-btn ttw-btn-small ttw-chapter-preset" data-regex="^[\\s\\u3000\\uFEFF]*第\\s*[零一二三四五六七八九十百千万0-9]+\\s*[章回卷节部篇][^\\n\\r]{0,80}">中文通用</button>

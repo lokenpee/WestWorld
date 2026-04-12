@@ -6,25 +6,116 @@ export function createChapterRegexView(deps = {}) {
         Logger,
     } = deps;
 
+    const INLINE_CHAPTER_MARKER_REGEX = /第\s*[零一二三四五六七八九十百千万两〇0-9]+\s*[章回卷节部篇]/giu;
+    const INLINE_CHAPTER_BOUNDARY_CHAR_REGEX = /[。！？!?；;，,、”’」』）)\]】》〉]/u;
+
+    function isLikelyChapterLineStart(content, index) {
+        if (!Number.isInteger(index) || index < 0) return false;
+        if (index === 0) return true;
+
+        let cursor = index - 1;
+        while (cursor >= 0) {
+            const ch = content[cursor];
+            if (ch === '\n' || ch === '\r') return true;
+            if (!(/[\s\u3000\uFEFF]/.test(ch))) return false;
+            cursor -= 1;
+        }
+        return true;
+    }
+
+    function getPreviousVisibleChar(content, index) {
+        if (!Number.isInteger(index) || index <= 0) return '';
+
+        let cursor = index - 1;
+        while (cursor >= 0) {
+            const ch = content[cursor];
+            if (!(/[\s\u3000\uFEFF]/.test(ch))) return ch;
+            cursor -= 1;
+        }
+        return '';
+    }
+
+    function isLikelyInlineChapterStart(content, index) {
+        if (!Number.isInteger(index) || index < 0) return false;
+        if (isLikelyChapterLineStart(content, index)) return true;
+
+        const prevChar = getPreviousVisibleChar(content, index);
+        return INLINE_CHAPTER_BOUNDARY_CHAR_REGEX.test(prevChar);
+    }
+
+    function normalizeInlineChapterMarkers(rawContent) {
+        const content = typeof rawContent === 'string' ? rawContent : String(rawContent || '');
+        if (!content) return content;
+
+        let result = '';
+        let cursor = 0;
+        let changed = false;
+
+        for (const match of content.matchAll(INLINE_CHAPTER_MARKER_REGEX)) {
+            const index = Number.isInteger(match.index) ? match.index : -1;
+            if (index < 0) continue;
+
+            const marker = match[0];
+            result += content.slice(cursor, index);
+
+            const shouldInsertBreak = !isLikelyChapterLineStart(content, index)
+                && isLikelyInlineChapterStart(content, index)
+                && !result.endsWith('\n')
+                && !result.endsWith('\r');
+
+            if (shouldInsertBreak) {
+                result += '\n';
+                changed = true;
+            }
+
+            result += marker;
+            cursor = index + marker.length;
+        }
+
+        if (cursor === 0) return content;
+        result += content.slice(cursor);
+        return changed ? result : content;
+    }
+
+    function extractChapterCapture(match) {
+        if (!match || typeof match[0] !== 'string') {
+            return { capturedText: '', offsetInFullMatch: 0 };
+        }
+
+        const fullMatch = match[0];
+        for (let i = 1; i < match.length; i++) {
+            const captured = typeof match[i] === 'string' ? match[i] : '';
+            if (!captured) continue;
+
+            const offset = fullMatch.indexOf(captured);
+            if (offset >= 0) {
+                return { capturedText: captured, offsetInFullMatch: offset };
+            }
+        }
+
+        return { capturedText: fullMatch, offsetInFullMatch: 0 };
+    }
+
+    function getChapterMatchStartIndex(match) {
+        const baseIndex = Number.isInteger(match?.index) ? match.index : 0;
+        const capture = extractChapterCapture(match);
+        return baseIndex + capture.offsetInFullMatch;
+    }
+
+    function getChapterMatchText(match) {
+        return extractChapterCapture(match).capturedText || '';
+    }
+
     function detectChaptersWithRegex(content, regexPattern) {
         try {
+            const normalizedContent = normalizeInlineChapterMarkers(content);
             const regex = new RegExp(regexPattern, 'gm');
-            const rawMatches = [...content.matchAll(regex)];
+            const rawMatches = [...normalizedContent.matchAll(regex)];
             if (rawMatches.length === 0) return [];
 
             const lineStartMatches = rawMatches.filter((m) => {
-                const index = m.index;
-                if (!Number.isInteger(index) || index < 0) return false;
-                if (index === 0) return true;
-
-                let cursor = index - 1;
-                while (cursor >= 0) {
-                    const ch = content[cursor];
-                    if (ch === '\n' || ch === '\r') return true;
-                    if (!(/[\s\u3000\uFEFF]/.test(ch))) return false;
-                    cursor -= 1;
-                }
-                return true;
+                const matchStart = getChapterMatchStartIndex(m);
+                return isLikelyInlineChapterStart(normalizedContent, matchStart);
             });
 
             return lineStartMatches.length > 0 ? lineStartMatches : rawMatches;
@@ -65,7 +156,7 @@ export function createChapterRegexView(deps = {}) {
             return;
         }
 
-        const previewChapters = matches.slice(0, 10).map((m) => m[0]).join('\n');
+        const previewChapters = matches.slice(0, 10).map((m) => getChapterMatchText(m) || m[0]).join('\n');
         const modal = ModalFactory.create({
             id: 'ttw-regex-test-modal',
             title: `✅ 检测到 ${matches.length} 个章节`,
