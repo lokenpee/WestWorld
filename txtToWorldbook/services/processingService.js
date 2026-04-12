@@ -977,8 +977,9 @@
         return list.map((seg, idx) => {
             const summary = toShortOutline(seg, 36) || `第${chapterIndex}章节拍${idx + 1}`;
             const tags = idx === 0 ? ['开场'] : (idx === lastIdx ? ['收束'] : ['推进']);
-            const pointIndex = points.length > 0
-                ? Math.max(0, Math.min(points.length - 1, idx - 1))
+            // split_points are boundaries between beats, so beat-1 has no preceding split point.
+            const pointIndex = (points.length > 0 && idx > 0)
+                ? Math.min(points.length - 1, idx - 1)
                 : -1;
             const point = pointIndex >= 0 ? points[pointIndex] : null;
             const pointWarnings = pointIndex >= 0 && Array.isArray(splitWarnings[pointIndex])
