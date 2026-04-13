@@ -10,6 +10,12 @@
         entryRollStoreName: 'entryRolls', // 新增：条目级别Roll历史
         resolvedDbName: '',
         db: null,
+        stateSaveThrottleMs: 4000,
+        stateSaveTimer: null,
+        stateSavePendingState: null,
+        stateSavePendingResolvers: [],
+        stateSavePendingRejectors: [],
+        stateSaveFlushPromise: null,
 
         async resolveDbName() {
             if (this.resolvedDbName) return this.resolvedDbName;
@@ -153,7 +159,7 @@
          * @param {*} changedEntries
          * @returns {Promise<any>}
          */
-        async saveHistory(memoryIndex, memoryTitle, previousWorldbook, newWorldbook, changedEntries) {
+        async saveHistory(memoryIndex, memoryTitle, previousWorldbook, newWorldbook, changedEntries, options = {}) {
             const db = await this.openDB();
             const allowedDuplicates = ['记忆-优化', '记忆-演变总结'];
             if (!allowedDuplicates.includes(memoryTitle)) {
@@ -184,6 +190,7 @@
                     previousWorldbook: JSON.parse(JSON.stringify(previousWorldbook || {})),
                     newWorldbook: JSON.parse(JSON.stringify(newWorldbook || {})),
                     changedEntries: changedEntries || [],
+                    snapshotMode: String(options?.snapshotMode || 'full'),
                     fileHash: AppState.file.hash || null,
                     volumeIndex: AppState.worldbook.currentVolumeIndex
                 };
@@ -307,41 +314,134 @@
             });
         },
 
+        buildStateSnapshot(processedIndex) {
+            return {
+                key: 'currentState',
+                processedIndex,
+                memoryQueue: JSON.parse(JSON.stringify(AppState.memory.queue)),
+                generatedWorldbook: JSON.parse(JSON.stringify(AppState.worldbook.generated)),
+                worldbookVolumes: JSON.parse(JSON.stringify(AppState.worldbook.volumes)),
+                currentVolumeIndex: AppState.worldbook.currentVolumeIndex,
+                fileHash: AppState.file.hash,
+                novelName: AppState.file.novelName || '',
+                experience: JSON.parse(JSON.stringify(AppState.experience || {})),
+                processingState: {
+                    incrementalMode: !!AppState.processing?.incrementalMode,
+                    volumeMode: !!AppState.processing?.volumeMode,
+                },
+                queueState: {
+                    startIndex: Number.isInteger(AppState.memory?.startIndex) ? AppState.memory.startIndex : 0,
+                    userSelectedIndex: Number.isInteger(AppState.memory?.userSelectedIndex) ? AppState.memory.userSelectedIndex : null,
+                },
+                timestamp: Date.now(),
+            };
+        },
+
+        async writeStateSnapshot(state) {
+            const db = await this.openDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([this.stateStoreName], 'readwrite');
+                const store = transaction.objectStore(this.stateStoreName);
+                const request = store.put(state);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        },
+
+        scheduleStateSaveFlush() {
+            if (this.stateSaveTimer) return;
+            this.stateSaveTimer = setTimeout(() => {
+                this.stateSaveTimer = null;
+                this.flushPendingStateSave().catch((error) => {
+                    Logger.error('MemoryHistoryDB', 'saveState 节流写入失败:', error);
+                });
+            }, this.stateSaveThrottleMs);
+        },
+
+        rejectPendingStateSave(error) {
+            const rejectors = this.stateSavePendingRejectors.splice(0);
+            this.stateSavePendingResolvers.length = 0;
+            rejectors.forEach((reject) => {
+                try {
+                    reject(error);
+                } catch (_) {}
+            });
+        },
+
+        resolvePendingStateSave() {
+            const resolvers = this.stateSavePendingResolvers.splice(0);
+            this.stateSavePendingRejectors.length = 0;
+            resolvers.forEach((resolve) => {
+                try {
+                    resolve();
+                } catch (_) {}
+            });
+        },
+
+        cancelPendingStateSave(error = null) {
+            if (this.stateSaveTimer) {
+                clearTimeout(this.stateSaveTimer);
+                this.stateSaveTimer = null;
+            }
+            this.stateSavePendingState = null;
+            if (error) {
+                this.rejectPendingStateSave(error);
+            } else {
+                this.resolvePendingStateSave();
+            }
+        },
+
+        async flushPendingStateSave() {
+            if (this.stateSaveTimer) {
+                clearTimeout(this.stateSaveTimer);
+                this.stateSaveTimer = null;
+            }
+
+            if (this.stateSaveFlushPromise) {
+                await this.stateSaveFlushPromise;
+            }
+
+            while (this.stateSavePendingState) {
+                const state = this.stateSavePendingState;
+                this.stateSavePendingState = null;
+                this.stateSaveFlushPromise = this.writeStateSnapshot(state)
+                    .then(() => {
+                        this.resolvePendingStateSave();
+                    })
+                    .catch((error) => {
+                        this.rejectPendingStateSave(error);
+                        throw error;
+                    })
+                    .finally(() => {
+                        this.stateSaveFlushPromise = null;
+                    });
+                await this.stateSaveFlushPromise;
+            }
+        },
+
         /**
          * saveState
          * 
          * @param {*} processedIndex
          * @returns {Promise<any>}
          */
-        async saveState(processedIndex) {
-            const db = await this.openDB();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction([this.stateStoreName], 'readwrite');
-                const store = transaction.objectStore(this.stateStoreName);
-                const state = {
-                    key: 'currentState',
-                    processedIndex,
-                    memoryQueue: JSON.parse(JSON.stringify(AppState.memory.queue)),
-                    generatedWorldbook: JSON.parse(JSON.stringify(AppState.worldbook.generated)),
-                    worldbookVolumes: JSON.parse(JSON.stringify(AppState.worldbook.volumes)),
-                    currentVolumeIndex: AppState.worldbook.currentVolumeIndex,
-                    fileHash: AppState.file.hash,
-                    novelName: AppState.file.novelName || '',
-                    experience: JSON.parse(JSON.stringify(AppState.experience || {})),
-                    processingState: {
-                        incrementalMode: !!AppState.processing?.incrementalMode,
-                        volumeMode: !!AppState.processing?.volumeMode,
-                    },
-                    queueState: {
-                        startIndex: Number.isInteger(AppState.memory?.startIndex) ? AppState.memory.startIndex : 0,
-                        userSelectedIndex: Number.isInteger(AppState.memory?.userSelectedIndex) ? AppState.memory.userSelectedIndex : null,
-                    },
-                    timestamp: Date.now()
-                };
-                const request = store.put(state);
-                request.onsuccess = () => resolve();
-                request.onerror = () => reject(request.error);
+        async saveState(processedIndex, options = {}) {
+            const immediate = options && options.immediate === true;
+            const state = this.buildStateSnapshot(processedIndex);
+            this.stateSavePendingState = state;
+
+            const waiter = new Promise((resolve, reject) => {
+                this.stateSavePendingResolvers.push(resolve);
+                this.stateSavePendingRejectors.push(reject);
             });
+
+            if (immediate) {
+                await this.flushPendingStateSave();
+                return waiter;
+            }
+
+            this.scheduleStateSaveFlush();
+            return waiter;
         },
 
         /**
@@ -366,6 +466,7 @@
          * @returns {Promise<any>}
          */
         async clearState() {
+            this.cancelPendingStateSave();
             const db = await this.openDB();
             return new Promise((resolve, reject) => {
                 const transaction = db.transaction([this.stateStoreName], 'readwrite');
@@ -564,10 +665,47 @@
         async rollbackToHistory(historyId) {
             const history = await this.getHistoryById(historyId);
             if (!history) throw new Error('找不到指定的历史记录');
-            AppState.worldbook.generated = JSON.parse(JSON.stringify(history.previousWorldbook));
-            const db = await this.openDB();
             const allHistory = await this.getAllHistory();
-            const toDelete = allHistory.filter(h => h.id >= historyId);
+            const toDelete = allHistory
+                .filter(h => h.id >= historyId)
+                .sort((a, b) => b.id - a.id);
+
+            const canUseDirectSnapshot = history
+                && history.snapshotMode !== 'delta'
+                && history.previousWorldbook
+                && typeof history.previousWorldbook === 'object';
+
+            if (canUseDirectSnapshot) {
+                AppState.worldbook.generated = JSON.parse(JSON.stringify(history.previousWorldbook));
+            } else {
+                const worldbook = JSON.parse(JSON.stringify(AppState.worldbook.generated || {}));
+                for (const record of toDelete) {
+                    const changes = Array.isArray(record.changedEntries) ? record.changedEntries : [];
+                    for (const change of changes) {
+                        const category = String(change?.category || '').trim();
+                        const entryName = String(change?.entryName || '').trim();
+                        if (!category || !entryName) continue;
+
+                        if (!Object.prototype.hasOwnProperty.call(worldbook, category) || typeof worldbook[category] !== 'object' || !worldbook[category]) {
+                            worldbook[category] = {};
+                        }
+
+                        const oldValue = change.oldValue;
+                        if (oldValue === null || oldValue === undefined) {
+                            delete worldbook[category][entryName];
+                            if (Object.keys(worldbook[category]).length === 0) {
+                                delete worldbook[category];
+                            }
+                            continue;
+                        }
+
+                        worldbook[category][entryName] = JSON.parse(JSON.stringify(oldValue));
+                    }
+                }
+                AppState.worldbook.generated = worldbook;
+            }
+
+            const db = await this.openDB();
             const transaction = db.transaction([this.storeName], 'readwrite');
             const store = transaction.objectStore(this.storeName);
             for (const h of toDelete) {

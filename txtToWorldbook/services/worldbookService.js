@@ -142,10 +142,42 @@ export function createWorldbookService(deps = {}) {
         return changes;
     }
 
+    function deepClone(value) {
+        if (value === undefined) return undefined;
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    function collectTouchedEntryRefs(source) {
+        const refs = [];
+        if (!source || typeof source !== 'object') return refs;
+        for (const category in source) {
+            const entries = source[category];
+            if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+            for (const entryName in entries) {
+                const entry = entries[entryName];
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+                refs.push({ category, entryName });
+            }
+        }
+        return refs;
+    }
+
+    function ensureSnapshotCategory(snapshot, category) {
+        if (!snapshot[category]) snapshot[category] = {};
+        return snapshot[category];
+    }
+
     async function mergeWorldbookDataWithHistory(options) {
         const { target, source, memoryIndex, memoryTitle } = options;
-        debugLog(`合并世界书[${memoryTitle}] 开始, 深拷贝快照...`);
-        const previousWorldbook = JSON.parse(JSON.stringify(target));
+        debugLog(`合并世界书[${memoryTitle}] 开始, 构建触达条目快照...`);
+        const touchedRefs = collectTouchedEntryRefs(source);
+        const fallbackPreviousWorldbook = touchedRefs.length === 0 ? deepClone(target) : null;
+        const previousEntryMap = new Map();
+        for (const ref of touchedRefs) {
+            const key = `${ref.category}::${ref.entryName}`;
+            const oldValue = target?.[ref.category]?.[ref.entryName];
+            previousEntryMap.set(key, deepClone(oldValue));
+        }
 
         if (getIncrementalMode()) {
             mergeWorldbookDataIncremental(target, source);
@@ -153,12 +185,55 @@ export function createWorldbookService(deps = {}) {
             mergeWorldbookData(target, source);
         }
 
+        if (touchedRefs.length === 0) {
+            const changedEntries = findChangedEntries(fallbackPreviousWorldbook || {}, target);
+            if (changedEntries.length > 0) {
+                debugLog(`合并世界书[${memoryTitle}] 发现${changedEntries.length}处变更, 保存历史(全量回退模式)...`);
+                await saveHistory(memoryIndex, memoryTitle, fallbackPreviousWorldbook || {}, target, changedEntries, { snapshotMode: 'full' });
+            }
+            debugLog(`合并世界书[${memoryTitle}] 全部完成`);
+            return changedEntries;
+        }
+
         debugLog(`合并世界书[${memoryTitle}] 合并完成, 计算差异...`);
-        const changedEntries = findChangedEntries(previousWorldbook, target);
+        const changedEntries = [];
+        const previousWorldbook = {};
+        const newWorldbook = {};
+
+        for (const ref of touchedRefs) {
+            const key = `${ref.category}::${ref.entryName}`;
+            const oldValue = previousEntryMap.get(key);
+            const newValue = deepClone(target?.[ref.category]?.[ref.entryName]);
+            const hadOld = oldValue !== undefined;
+            const hasNew = newValue !== undefined;
+
+            if (!hadOld && !hasNew) continue;
+
+            if (hadOld) {
+                ensureSnapshotCategory(previousWorldbook, ref.category)[ref.entryName] = oldValue;
+            }
+            if (hasNew) {
+                ensureSnapshotCategory(newWorldbook, ref.category)[ref.entryName] = newValue;
+            }
+
+            if (!hadOld && hasNew) {
+                changedEntries.push({ type: 'add', category: ref.category, entryName: ref.entryName, oldValue: null, newValue });
+                continue;
+            }
+
+            if (hadOld && !hasNew) {
+                changedEntries.push({ type: 'delete', category: ref.category, entryName: ref.entryName, oldValue, newValue: null });
+                continue;
+            }
+
+            if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+                changedEntries.push({ type: 'modify', category: ref.category, entryName: ref.entryName, oldValue, newValue });
+            }
+        }
 
         if (changedEntries.length > 0) {
             debugLog(`合并世界书[${memoryTitle}] 发现${changedEntries.length}处变更, 保存历史...`);
-            await saveHistory(memoryIndex, memoryTitle, previousWorldbook, target, changedEntries);
+            await saveHistory(memoryIndex, memoryTitle, previousWorldbook, newWorldbook, changedEntries, { snapshotMode: 'delta' });
         }
 
         debugLog(`合并世界书[${memoryTitle}] 全部完成`);
