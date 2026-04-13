@@ -58,6 +58,7 @@ export function createFeatureBindings(featureServices = {}) {
         replaceAndCleanService,
         importMergeService,
         showCleanTagsModal: runtimeActionsFacade.showCleanTagsModal,
+        showBatchDeleteRepeatedSegmentsModal: runtimeActionsFacade.showBatchDeleteRepeatedSegmentsModal,
         showEntryConfigModal: runtimeActionsFacade.showEntryConfigModal,
         showPlotOutlineConfigModal: runtimeActionsFacade.showPlotOutlineConfigModal,
         showCategoryConfigModal: runtimeActionsFacade.showCategoryConfigModal,

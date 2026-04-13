@@ -5,6 +5,8 @@ export function createReplaceAndCleanService(deps = {}) {
         ErrorHandler,
         confirmAction,
         updateWorldbookPreview,
+        updateMemoryQueueUI,
+        updateStartButtonState,
     } = deps;
 
     function parseTagNames(input) {
@@ -360,7 +362,495 @@ tochao">thinking\ntucao\ntochao</textarea>
         });
     }
 
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function parseRepeatedSegments(input) {
+        const raw = String(input || '').replace(/\r\n?/g, '\n').trim();
+        if (!raw) return [];
+
+        const blocks = raw
+            .split(/\n\s*\n+/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+
+        const source = blocks.length > 1
+            ? blocks
+            : raw
+                .split('\n')
+                .map((item) => item.trim())
+                .filter(Boolean);
+
+        const unique = [];
+        const seen = new Set();
+        for (const item of source) {
+            if (!item || seen.has(item)) continue;
+            seen.add(item);
+            unique.push(item);
+        }
+        return unique;
+    }
+
+    function countOccurrences(text, pattern) {
+        const source = String(text || '');
+        const target = String(pattern || '');
+        if (!source || !target) return 0;
+
+        let count = 0;
+        let cursor = 0;
+        while (cursor <= source.length - target.length) {
+            const at = source.indexOf(target, cursor);
+            if (at < 0) break;
+            count += 1;
+            cursor = at + target.length;
+        }
+        return count;
+    }
+
+    function getTargetChapterIndices(mode, selectedSet) {
+        const queue = Array.isArray(AppState.memory.queue) ? AppState.memory.queue : [];
+        const all = queue.map((_, idx) => idx);
+
+        if (mode === 'all') return all;
+        if (mode === 'unprocessed') {
+            return all.filter((idx) => {
+                const memory = queue[idx] || {};
+                return !(memory.processed && !memory.failed);
+            });
+        }
+
+        const selected = selectedSet instanceof Set
+            ? [...selectedSet].filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < queue.length)
+            : [];
+        return selected.sort((a, b) => a - b);
+    }
+
+    function buildCleanupPreview(segments, chapterIndices) {
+        const queue = Array.isArray(AppState.memory.queue) ? AppState.memory.queue : [];
+        const segmentHits = segments.map((seg) => ({ segment: seg, hits: 0 }));
+        const chapterStats = [];
+
+        let totalHits = 0;
+        let totalRemovedChars = 0;
+
+        for (const index of chapterIndices) {
+            const memory = queue[index] || {};
+            const content = String(memory.content || '');
+            let chapterHits = 0;
+            let chapterRemovedChars = 0;
+
+            segments.forEach((segment, segIdx) => {
+                const hits = countOccurrences(content, segment);
+                if (hits <= 0) return;
+                chapterHits += hits;
+                chapterRemovedChars += hits * segment.length;
+                segmentHits[segIdx].hits += hits;
+            });
+
+            if (chapterHits > 0) {
+                chapterStats.push({
+                    index,
+                    chapterTitle: String(memory.chapterTitle || `第${index + 1}章`),
+                    memoryTitle: String(memory.title || `记忆${index + 1}`),
+                    processed: !!memory.processed && !memory.failed,
+                    hits: chapterHits,
+                    removedChars: chapterRemovedChars,
+                });
+                totalHits += chapterHits;
+                totalRemovedChars += chapterRemovedChars;
+            }
+        }
+
+        return {
+            chapterStats,
+            totalHits,
+            totalRemovedChars,
+            segmentHits,
+            hitChapterIndices: chapterStats.map((item) => item.index),
+        };
+    }
+
+    function resetChapterRuntimeAfterContentCleanup(memory) {
+        if (!memory || typeof memory !== 'object') return;
+        memory.processed = false;
+        memory.failed = false;
+        memory.processing = false;
+        memory.failedError = '';
+        memory.result = null;
+        memory.chapterOutline = '';
+        memory.chapterOutlineStatus = 'pending';
+        memory.chapterOutlineError = '';
+        memory.chapterScript = { keyNodes: [], beats: [] };
+        memory.chapterCurrentBeatIndex = 0;
+        memory.directorDecision = null;
+        memory.chapterOpeningPreview = '';
+        memory.chapterOpeningSent = false;
+        memory.chapterOpeningError = '';
+    }
+
+    function applyRepeatedSegmentsCleanup(segments, chapterIndices) {
+        const queue = Array.isArray(AppState.memory.queue) ? AppState.memory.queue : [];
+        const changedIndices = [];
+        const resetProcessedIndices = [];
+        let deletedHits = 0;
+        let deletedChars = 0;
+
+        for (const index of chapterIndices) {
+            const memory = queue[index];
+            if (!memory) continue;
+
+            const original = String(memory.content || '');
+            let next = original;
+            let chapterHits = 0;
+            let chapterDeletedChars = 0;
+
+            for (const segment of segments) {
+                const hits = countOccurrences(next, segment);
+                if (hits <= 0) continue;
+                chapterHits += hits;
+                chapterDeletedChars += hits * segment.length;
+                next = next.split(segment).join('');
+            }
+
+            if (chapterHits <= 0 || next === original) continue;
+
+            if (memory.processed && !memory.failed) {
+                resetProcessedIndices.push(index);
+            }
+
+            memory.content = next;
+            resetChapterRuntimeAfterContentCleanup(memory);
+
+            changedIndices.push(index);
+            deletedHits += chapterHits;
+            deletedChars += chapterDeletedChars;
+        }
+
+        if (changedIndices.length > 0) {
+            const earliest = Math.min(...changedIndices);
+            if (Number.isInteger(AppState.memory.startIndex)) {
+                AppState.memory.startIndex = Math.min(AppState.memory.startIndex, earliest);
+            } else {
+                AppState.memory.startIndex = earliest;
+            }
+
+            if (Number.isInteger(AppState.memory.userSelectedIndex)
+                && AppState.memory.userSelectedIndex > earliest) {
+                AppState.memory.userSelectedIndex = earliest;
+            }
+        }
+
+        return {
+            changedIndices,
+            resetProcessedIndices,
+            deletedHits,
+            deletedChars,
+        };
+    }
+
+    function buildChapterCheckboxList(selectedIndices) {
+        const queue = Array.isArray(AppState.memory.queue) ? AppState.memory.queue : [];
+        return queue.map((memory, idx) => {
+            const checked = selectedIndices.has(idx) ? 'checked' : '';
+            const chapterTitle = escapeHtml(memory?.chapterTitle || `第${idx + 1}章`);
+            const memoryTitle = escapeHtml(memory?.title || `记忆${idx + 1}`);
+            const isProcessed = !!memory?.processed && !memory?.failed;
+            const status = isProcessed
+                ? '<span style="font-size:10px;color:#f39c12;">已处理</span>'
+                : '<span style="font-size:10px;color:#2ecc71;">未处理</span>';
+
+            return `
+                <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px dashed rgba(255,255,255,0.08);">
+                    <input type="checkbox" class="ttw-clean-repeat-chapter-cb" data-index="${idx}" ${checked}>
+                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${chapterTitle} · ${memoryTitle}</span>
+                    ${status}
+                </label>
+            `;
+        }).join('');
+    }
+
+    function renderCleanupPreview(modal, preview) {
+        const summary = modal.querySelector('#ttw-clean-repeat-summary');
+        const resultWrap = modal.querySelector('#ttw-clean-repeat-results');
+        const details = modal.querySelector('#ttw-clean-repeat-details');
+        const executeBtn = modal.querySelector('#ttw-execute-clean-repeat');
+        if (!summary || !resultWrap || !details || !executeBtn) return;
+
+        resultWrap.style.display = 'block';
+
+        if (!preview || preview.totalHits <= 0) {
+            summary.innerHTML = '<span style="color:#95a5a6;">预览完成：未命中任何重复片段。</span>';
+            details.innerHTML = '';
+            executeBtn.disabled = true;
+            executeBtn.textContent = '🧹 执行删除';
+            return;
+        }
+
+        const topChapters = preview.chapterStats.slice(0, 20);
+        const chapterLines = topChapters.map((item) => {
+            const chapter = escapeHtml(item.chapterTitle || `第${item.index + 1}章`);
+            const processedBadge = item.processed
+                ? '<span style="color:#f39c12;">已处理</span>'
+                : '<span style="color:#2ecc71;">未处理</span>';
+            return `<li>${chapter}：命中 ${item.hits} 次，删除 ${item.removedChars} 字（${processedBadge}）</li>`;
+        }).join('');
+
+        const topSegments = preview.segmentHits
+            .filter((item) => item.hits > 0)
+            .sort((a, b) => b.hits - a.hits)
+            .slice(0, 8)
+            .map((item) => `<li>片段「${escapeHtml(item.segment.slice(0, 40))}${item.segment.length > 40 ? '...' : ''}」命中 ${item.hits} 次</li>`)
+            .join('');
+
+        summary.innerHTML = `
+            <div style="color:#2ecc71;font-weight:bold;">预览命中 ${preview.totalHits} 次，涉及 ${preview.chapterStats.length} 章，预计删除 ${preview.totalRemovedChars} 字。</div>
+            <div style="font-size:11px;color:#aaa;margin-top:4px;">提示：执行后受影响章节将重置为未处理状态，请从最早受影响章节重新转换。</div>
+        `;
+
+        details.innerHTML = `
+            <div style="margin-bottom:8px;font-size:12px;color:#ddd;">章节命中明细（最多显示20条）</div>
+            <ul style="margin:0 0 10px 16px;padding:0;line-height:1.7;">${chapterLines}</ul>
+            <div style="margin-bottom:6px;font-size:12px;color:#ddd;">片段命中统计（Top 8）</div>
+            <ul style="margin:0 0 0 16px;padding:0;line-height:1.7;">${topSegments || '<li>无</li>'}</ul>
+        `;
+
+        executeBtn.disabled = false;
+        executeBtn.textContent = `🧹 执行删除（${preview.totalHits} 处）`;
+    }
+
+    function showBatchDeleteRepeatedSegmentsModal() {
+        if (!Array.isArray(AppState.memory.queue) || AppState.memory.queue.length === 0) {
+            ErrorHandler.showUserError('请先导入TXT并生成章节队列');
+            return;
+        }
+
+        const existing = document.getElementById('ttw-clean-repeat-modal');
+        if (existing) existing.remove();
+
+        const defaultSelected = new Set(AppState.memory.queue.map((_, idx) => idx));
+        const bodyHtml = `
+            <div style="margin-bottom:14px;padding:12px;background:rgba(46,204,113,0.12);border-radius:8px;">
+                <div style="font-size:12px;color:#d6ffe6;line-height:1.8;">
+                    粘贴你想删除的重复片段（如广告语、作者签名、固定尾注），先预览命中，再执行删除。<br>
+                    匹配方式为精确字面量匹配，不使用正则。
+                </div>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block;margin-bottom:8px;font-size:13px;font-weight:bold;">重复片段输入（空行分段；若无空行则按行处理）</label>
+                <textarea id="ttw-clean-repeat-input" rows="8" class="ttw-textarea-small" placeholder="例如：\n（月影霜华 作者:江东孙伯父）\n\n本章完\n\n请收藏本站..."></textarea>
+                <div id="ttw-clean-repeat-parse-hint" style="margin-top:6px;font-size:11px;color:#95a5a6;">尚未解析片段</div>
+            </div>
+
+            <div style="margin-bottom:12px;padding:10px;background:rgba(52,152,219,0.1);border-radius:6px;">
+                <div style="font-size:12px;font-weight:bold;margin-bottom:8px;color:#7ec8ff;">作用范围</div>
+                <label style="display:block;margin-bottom:6px;"><input type="radio" name="ttw-clean-repeat-range" value="all" checked> 全部章节</label>
+                <label style="display:block;margin-bottom:6px;"><input type="radio" name="ttw-clean-repeat-range" value="unprocessed"> 仅未处理章节</label>
+                <label style="display:block;"><input type="radio" name="ttw-clean-repeat-range" value="custom"> 自定义章节（支持多选）</label>
+            </div>
+
+            <div id="ttw-clean-repeat-custom-wrap" style="display:none;margin-bottom:12px;padding:10px;background:rgba(0,0,0,0.18);border-radius:6px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <span style="font-size:12px;color:#ddd;">章节多选</span>
+                    <div style="display:flex;gap:8px;">
+                        <button class="ttw-btn-tiny" id="ttw-clean-repeat-select-all">全选章节</button>
+                        <button class="ttw-btn-tiny" id="ttw-clean-repeat-select-none">清空选择</button>
+                    </div>
+                </div>
+                <div id="ttw-clean-repeat-chapter-list" style="max-height:220px;overflow-y:auto;border:1px solid rgba(255,255,255,0.08);border-radius:6px;"></div>
+            </div>
+
+            <div id="ttw-clean-repeat-results" style="display:none;margin-top:12px;padding:10px;background:rgba(0,0,0,0.2);border-radius:6px;">
+                <div id="ttw-clean-repeat-summary" style="margin-bottom:8px;"></div>
+                <div id="ttw-clean-repeat-details" style="font-size:12px;color:#ddd;"></div>
+            </div>
+        `;
+
+        const footerHtml = `
+            <button class="ttw-btn ttw-btn-primary" id="ttw-preview-clean-repeat">🔍 预览命中</button>
+            <button class="ttw-btn ttw-btn-warning" id="ttw-execute-clean-repeat" disabled>🧹 执行删除</button>
+            <button class="ttw-btn" id="ttw-close-clean-repeat">关闭</button>
+        `;
+
+        const modal = ModalFactory.create({
+            id: 'ttw-clean-repeat-modal',
+            title: '🧹 批量删除重复段落',
+            body: bodyHtml,
+            footer: footerHtml,
+            maxWidth: '860px',
+        });
+
+        const customWrap = modal.querySelector('#ttw-clean-repeat-custom-wrap');
+        const chapterList = modal.querySelector('#ttw-clean-repeat-chapter-list');
+        const parseHint = modal.querySelector('#ttw-clean-repeat-parse-hint');
+        const previewBtn = modal.querySelector('#ttw-preview-clean-repeat');
+        const executeBtn = modal.querySelector('#ttw-execute-clean-repeat');
+        const resultWrap = modal.querySelector('#ttw-clean-repeat-results');
+        const inputEl = modal.querySelector('#ttw-clean-repeat-input');
+        const rangeEls = modal.querySelectorAll('input[name="ttw-clean-repeat-range"]');
+
+        if (chapterList) {
+            chapterList.innerHTML = buildChapterCheckboxList(defaultSelected);
+        }
+
+        let previewState = null;
+
+        const markPreviewDirty = () => {
+            previewState = null;
+            if (executeBtn) {
+                executeBtn.disabled = true;
+                executeBtn.textContent = '🧹 执行删除';
+            }
+            if (resultWrap) resultWrap.style.display = 'none';
+        };
+
+        const getRangeMode = () => {
+            const selected = modal.querySelector('input[name="ttw-clean-repeat-range"]:checked');
+            return selected ? selected.value : 'all';
+        };
+
+        const getCustomSelectedSet = () => {
+            const set = new Set();
+            modal.querySelectorAll('.ttw-clean-repeat-chapter-cb:checked').forEach((el) => {
+                const idx = Number.parseInt(el.dataset.index, 10);
+                if (Number.isInteger(idx)) set.add(idx);
+            });
+            return set;
+        };
+
+        const refreshParseHint = () => {
+            const segments = parseRepeatedSegments(inputEl?.value || '');
+            if (parseHint) {
+                parseHint.textContent = segments.length > 0
+                    ? `已解析 ${segments.length} 个待删片段（去重后）`
+                    : '尚未解析片段';
+            }
+        };
+
+        modal.querySelector('#ttw-close-clean-repeat')?.addEventListener('click', () => {
+            ModalFactory.close(modal);
+        });
+
+        modal.querySelector('#ttw-clean-repeat-select-all')?.addEventListener('click', () => {
+            modal.querySelectorAll('.ttw-clean-repeat-chapter-cb').forEach((el) => {
+                el.checked = true;
+            });
+            markPreviewDirty();
+        });
+
+        modal.querySelector('#ttw-clean-repeat-select-none')?.addEventListener('click', () => {
+            modal.querySelectorAll('.ttw-clean-repeat-chapter-cb').forEach((el) => {
+                el.checked = false;
+            });
+            markPreviewDirty();
+        });
+
+        rangeEls.forEach((el) => {
+            el.addEventListener('change', () => {
+                if (customWrap) {
+                    customWrap.style.display = getRangeMode() === 'custom' ? 'block' : 'none';
+                }
+                markPreviewDirty();
+            });
+        });
+
+        modal.querySelectorAll('.ttw-clean-repeat-chapter-cb').forEach((el) => {
+            el.addEventListener('change', () => markPreviewDirty());
+        });
+
+        inputEl?.addEventListener('input', () => {
+            refreshParseHint();
+            markPreviewDirty();
+        });
+
+        refreshParseHint();
+
+        previewBtn?.addEventListener('click', () => {
+            const segments = parseRepeatedSegments(inputEl?.value || '');
+            if (segments.length === 0) {
+                ErrorHandler.showUserError('请先输入至少一个重复片段');
+                return;
+            }
+
+            const mode = getRangeMode();
+            const chapterIndices = getTargetChapterIndices(mode, getCustomSelectedSet());
+            if (chapterIndices.length === 0) {
+                ErrorHandler.showUserError('当前范围未选中任何章节');
+                return;
+            }
+
+            const preview = buildCleanupPreview(segments, chapterIndices);
+            previewState = {
+                segments,
+                mode,
+                chapterIndices,
+                preview,
+            };
+
+            renderCleanupPreview(modal, preview);
+        });
+
+        executeBtn?.addEventListener('click', async () => {
+            if (!previewState || !previewState.preview || previewState.preview.totalHits <= 0) {
+                ErrorHandler.showUserError('请先预览并确认有命中内容');
+                return;
+            }
+
+            const processedHitIndices = previewState.preview.chapterStats
+                .filter((item) => item.processed)
+                .map((item) => item.index);
+
+            if (processedHitIndices.length > 0) {
+                const confirmProcessed = await confirmAction(
+                    `命中了 ${processedHitIndices.length} 个已处理章节。执行后这些章节会重置为未处理，需要重新转换。\n\n是否继续？`,
+                    { title: '已处理章节将重置', danger: true },
+                );
+                if (!confirmProcessed) return;
+            }
+
+            const confirmed = await confirmAction(
+                `确定执行删除吗？\n\n将删除 ${previewState.preview.totalHits} 处重复片段，涉及 ${previewState.preview.chapterStats.length} 章。`,
+                { title: '确认批量删除', danger: true },
+            );
+            if (!confirmed) return;
+
+            const result = applyRepeatedSegmentsCleanup(previewState.segments, previewState.chapterIndices);
+
+            if (typeof updateMemoryQueueUI === 'function') {
+                updateMemoryQueueUI();
+            }
+            if (typeof updateStartButtonState === 'function') {
+                updateStartButtonState(false);
+            }
+            if (typeof updateWorldbookPreview === 'function') {
+                updateWorldbookPreview();
+            }
+
+            ModalFactory.close(modal);
+
+            if (result.changedIndices.length === 0) {
+                ErrorHandler.showUserError('执行完成，但没有检测到可删除内容');
+                return;
+            }
+
+            const resetCount = result.resetProcessedIndices.length;
+            const suffix = resetCount > 0
+                ? `，其中 ${resetCount} 章原为已处理，已重置为未处理`
+                : '';
+            ErrorHandler.showUserSuccess(
+                `清洗完成：删除 ${result.deletedHits} 处，影响 ${result.changedIndices.length} 章，共移除约 ${result.deletedChars} 字${suffix}`,
+            );
+        });
+    }
+
     return {
         showCleanTagsModal,
+        showBatchDeleteRepeatedSegmentsModal,
     };
 }

@@ -65,7 +65,7 @@ ${buildApiConfigCard('director', '🎬 导演AI配置')}
     </div>`;
 }
 
-const PLUGIN_VERSION = 'v3.2.3';
+const PLUGIN_VERSION = 'v3.2.4';
 
 function buildPluginUpdateHtml() {
     return '';
@@ -401,6 +401,7 @@ function buildFileUploadSectionHtml() {
             <span>📄 文件上传</span>
             <div style="display:flex;gap:8px;">
                 <button id="ttw-import-json" class="ttw-btn-small" title="导入已有世界书JSON进行合并">📥 合并世界书</button>
+                <button id="ttw-clean-repeat-segments" class="ttw-btn-small" title="批量删除小说中的重复广告段落/固定片段">🧹 清洗重复段落</button>
                 <button id="ttw-import-task" class="ttw-btn-small" title="导入工程包并恢复章节队列、故事大纲、当前章节概览与世界书">📥 导入工程包</button>
                 <button id="ttw-export-task" class="ttw-btn-small" title="导出完整工程包，后续可一键恢复">📤 导出工程包</button>
             </div>

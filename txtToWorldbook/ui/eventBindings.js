@@ -70,6 +70,7 @@ export function bindExportEvents(deps = {}) {
         AppState,
         showPromptPreview,
         showPlotOutlineConfigModal,
+        showBatchDeleteRepeatedSegmentsModal,
         importAndMergeWorldbook,
         loadTaskState,
         saveTaskState,
@@ -84,6 +85,10 @@ export function bindExportEvents(deps = {}) {
     document.getElementById('ttw-preview-prompt').addEventListener('click', showPromptPreview);
     document.getElementById('ttw-plot-export-config').addEventListener('click', showPlotOutlineConfigModal);
     document.getElementById('ttw-import-json').addEventListener('click', importAndMergeWorldbook);
+    const cleanRepeatBtn = document.getElementById('ttw-clean-repeat-segments');
+    if (cleanRepeatBtn && typeof showBatchDeleteRepeatedSegmentsModal === 'function') {
+        cleanRepeatBtn.addEventListener('click', showBatchDeleteRepeatedSegmentsModal);
+    }
     document.getElementById('ttw-import-task').addEventListener('click', loadTaskState);
     document.getElementById('ttw-export-task').addEventListener('click', saveTaskState);
     document.getElementById('ttw-export-settings').addEventListener('click', exportSettings);

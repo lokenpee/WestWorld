@@ -1022,6 +1022,7 @@ let {
     showConsolidateCategorySelector,
     showManualMergeUI,
     showAliasMergeUI,
+    showBatchDeleteRepeatedSegmentsModal,
     deleteWorldbookEntry,
 } = createFeaturePlaceholders();
 
@@ -1169,6 +1170,7 @@ const featureBindings = createFeatureBindings({
     showConsolidateCategorySelector,
     showManualMergeUI,
     showAliasMergeUI,
+    showBatchDeleteRepeatedSegmentsModal,
     deleteWorldbookEntry,
 } = featureBindings);
 
@@ -1247,6 +1249,7 @@ shellRuntime = createShellRuntime(createShellRuntimeConfig({
     updateStreamContent,
     showPromptPreview: (...args) => showPromptPreview(...args),
     showPlotOutlineConfigModal: (...args) => showPlotOutlineConfigModal(...args),
+    showBatchDeleteRepeatedSegmentsModal: (...args) => showBatchDeleteRepeatedSegmentsModal(...args),
     importAndMergeWorldbook,
     loadTaskState: (...args) => loadTaskState(...args),
     saveTaskState: (...args) => saveTaskState(...args),

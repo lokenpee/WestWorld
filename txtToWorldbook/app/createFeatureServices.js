@@ -85,6 +85,8 @@ export function createFeatureServices(deps = {}) {
         ErrorHandler,
         confirmAction,
         updateWorldbookPreview,
+        updateMemoryQueueUI,
+        updateStartButtonState,
     });
 
     const runtimeActionsFacade = createRuntimeActionsFacade({

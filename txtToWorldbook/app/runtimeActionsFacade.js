@@ -13,6 +13,12 @@ export function createRuntimeActionsFacade(deps = {}) {
         replaceAndCleanService.showCleanTagsModal();
     }
 
+    function showBatchDeleteRepeatedSegmentsModal() {
+        if (!replaceAndCleanService) return;
+        if (typeof replaceAndCleanService.showBatchDeleteRepeatedSegmentsModal !== 'function') return;
+        replaceAndCleanService.showBatchDeleteRepeatedSegmentsModal();
+    }
+
     function showEntryConfigModal(category, entryName) {
         if (!entryConfigModals) return;
         entryConfigModals.showEntryConfigModal(category, entryName);
@@ -49,6 +55,7 @@ export function createRuntimeActionsFacade(deps = {}) {
 
     return {
         showCleanTagsModal,
+        showBatchDeleteRepeatedSegmentsModal,
         showEntryConfigModal,
         showPlotOutlineConfigModal,
         showCategoryConfigModal,
