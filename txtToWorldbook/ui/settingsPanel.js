@@ -1,4 +1,6 @@
-﻿function buildCustomApiSectionHtml() {
+﻿import { defaultConsolidatePrompt, defaultWorldbookPrompt } from '../core/constants.js';
+
+function buildCustomApiSectionHtml() {
     const buildApiConfigCard = (target, title) => `
 <div class="ttw-api-card" data-api-card="${target}" style="display:${target === 'main' ? 'block' : 'none'};">
     <div style="font-weight:bold;color:#8bc5ff;margin-bottom:10px;">${title}</div>
@@ -65,7 +67,7 @@ ${buildApiConfigCard('director', '🎬 导演AI配置')}
     </div>`;
 }
 
-const PLUGIN_VERSION = 'v3.5.9';
+const PLUGIN_VERSION = 'v3.6.1';
 
 function buildPluginUpdateHtml() {
     return '';
@@ -267,14 +269,17 @@ function buildWorldbookPromptSectionHtml() {
             <span class="ttw-collapse-icon">▼</span>
         </div>
         <div id="ttw-worldbook-content" class="ttw-prompt-content" style="display:block;">
-            <div class="ttw-setting-hint" style="margin-bottom:8px;">核心提示词。留空使用默认。</div>
+            <div class="ttw-setting-hint" style="margin-bottom:8px;">核心提示词。已预填默认内容，可直接在此基础上修改。</div>
             <div class="ttw-placeholder-hint" style="margin-bottom:10px;">
                 <span style="color:var(--ttw-text-secondary);font-weight:bold;">⚠️ 必须包含占位符：</span>
                 <code>{DYNAMIC_JSON_TEMPLATE}</code>
                 <div style="font-size:11px;color:var(--ttw-text-muted);margin-top:4px;">此占位符会被自动替换为根据启用分类生成的JSON模板</div>
             </div>
-            <textarea id="ttw-worldbook-prompt" rows="6" placeholder="留空使用默认..." class="ttw-textarea-small"></textarea>
-            <div style="margin-top:8px;"><button class="ttw-btn ttw-btn-small ttw-reset-prompt" data-type="worldbook">🔄 恢复默认</button></div>
+            <textarea id="ttw-worldbook-prompt" rows="6" placeholder="默认内容已自动填充" class="ttw-textarea-small"></textarea>
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="ttw-btn ttw-btn-small ttw-reset-prompt" data-type="worldbook">🔄 恢复默认</button>
+                <button class="ttw-btn ttw-btn-small" id="ttw-save-worldbook-prompt">💾 保存</button>
+            </div>
         </div>
     </div>`;
 }
@@ -290,14 +295,17 @@ function buildConsolidatePromptSectionHtml() {
             <span class="ttw-collapse-icon">▼</span>
         </div>
         <div id="ttw-consolidate-content" class="ttw-prompt-content" style="display:block;">
-            <div class="ttw-setting-hint" style="margin-bottom:8px;">整理条目时使用的AI提示词。留空使用默认。</div>
+            <div class="ttw-setting-hint" style="margin-bottom:8px;">整理条目时使用的AI提示词。已预填默认内容，可直接在此基础上修改。</div>
             <div class="ttw-placeholder-hint" style="margin-bottom:10px;">
                 <span style="color:var(--ttw-text-secondary);font-weight:bold;">⚠️ 必须包含占位符：</span>
                 <code>{CONTENT}</code>
                 <div style="font-size:11px;color:var(--ttw-text-muted);margin-top:4px;">此占位符会被替换为当前条目的原始内容</div>
             </div>
-            <textarea id="ttw-consolidate-prompt" rows="6" placeholder="留空使用默认..." class="ttw-textarea-small"></textarea>
-            <div style="margin-top:8px;"><button class="ttw-btn ttw-btn-small ttw-reset-prompt" data-type="consolidate">🔄 恢复默认</button></div>
+            <textarea id="ttw-consolidate-prompt" rows="6" placeholder="默认内容已自动填充" class="ttw-textarea-small"></textarea>
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="ttw-btn ttw-btn-small ttw-reset-prompt" data-type="consolidate">🔄 恢复默认</button>
+                <button class="ttw-btn ttw-btn-small" id="ttw-save-consolidate-prompt">💾 保存</button>
+            </div>
         </div>
     </div>`;
 }
@@ -676,7 +684,7 @@ export function hydrateSettingsFromState(deps = {}) {
     if (enableStyleEl) enableStyleEl.checked = AppState.settings.enableLiteraryStyle;
 
     const worldbookPromptEl = document.getElementById('ttw-worldbook-prompt');
-    if (worldbookPromptEl) worldbookPromptEl.value = AppState.settings.customWorldbookPrompt || '';
+    if (worldbookPromptEl) worldbookPromptEl.value = AppState.settings.customWorldbookPrompt || defaultWorldbookPrompt;
 
     const plotPromptEl = document.getElementById('ttw-plot-prompt');
     if (plotPromptEl) plotPromptEl.value = AppState.settings.customPlotPrompt || '';
@@ -685,7 +693,7 @@ export function hydrateSettingsFromState(deps = {}) {
     if (stylePromptEl) stylePromptEl.value = AppState.settings.customStylePrompt || '';
 
     const consolidatePromptEl = document.getElementById('ttw-consolidate-prompt');
-    if (consolidatePromptEl) consolidatePromptEl.value = AppState.settings.customConsolidatePrompt || '';
+    if (consolidatePromptEl) consolidatePromptEl.value = AppState.settings.customConsolidatePrompt || defaultConsolidatePrompt;
 
     const parallelEnabledEl = document.getElementById('ttw-parallel-enabled');
     if (parallelEnabledEl) parallelEnabledEl.checked = AppState.config.parallel.enabled;

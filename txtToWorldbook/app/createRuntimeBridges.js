@@ -99,7 +99,7 @@ export function createShellRuntimeBindings(shellRuntime) {
         splitContentIntoMemory: shellRuntime.fileImportService.splitContentIntoMemory,
         handleClearFile: shellRuntime.fileImportService.handleClearFile,
         rechunkMemories: shellRuntime.fileImportService.rechunkMemories,
-        saveCurrentSettings: () => shellRuntime.modalRuntimeFacade.saveCurrentSettings(),
+        saveCurrentSettings: (...args) => shellRuntime.modalRuntimeFacade.saveCurrentSettings(...args),
         loadSavedSettings: () => shellRuntime.modalRuntimeFacade.loadSavedSettings(),
         initializeModalState: () => shellRuntime.modalRuntimeFacade.initializeModalState(),
         restoreModalData: () => shellRuntime.modalRuntimeFacade.restoreModalData(),

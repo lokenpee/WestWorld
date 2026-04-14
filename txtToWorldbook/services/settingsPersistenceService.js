@@ -62,7 +62,11 @@ export function createSettingsPersistenceService(deps) {
         return base;
     }
 
-    function saveCurrentSettings() {
+    function saveCurrentSettings(options = {}) {
+        const {
+            syncPromptFieldsFromDom = false,
+        } = options;
+
         AppState.settings.chunkSize = parseInt(document.getElementById('ttw-chunk-size')?.value) || 8000;
         AppState.settings.apiTimeout = (parseInt(document.getElementById('ttw-api-timeout')?.value) || 120) * 1000;
         AppState.processing.incrementalMode = document.getElementById('ttw-incremental-mode')?.checked ?? true;
@@ -70,10 +74,12 @@ export function createSettingsPersistenceService(deps) {
         AppState.settings.useVolumeMode = AppState.processing.volumeMode;
         AppState.settings.enablePlotOutline = document.getElementById('ttw-enable-plot')?.checked ?? false;
         AppState.settings.enableLiteraryStyle = document.getElementById('ttw-enable-style')?.checked ?? false;
-        AppState.settings.customWorldbookPrompt = document.getElementById('ttw-worldbook-prompt')?.value || '';
-        AppState.settings.customPlotPrompt = document.getElementById('ttw-plot-prompt')?.value || '';
-        AppState.settings.customStylePrompt = document.getElementById('ttw-style-prompt')?.value || '';
-        AppState.settings.customConsolidatePrompt = document.getElementById('ttw-consolidate-prompt')?.value || '';
+        if (syncPromptFieldsFromDom) {
+            AppState.settings.customWorldbookPrompt = document.getElementById('ttw-worldbook-prompt')?.value || '';
+            AppState.settings.customPlotPrompt = document.getElementById('ttw-plot-prompt')?.value || '';
+            AppState.settings.customStylePrompt = document.getElementById('ttw-style-prompt')?.value || '';
+            AppState.settings.customConsolidatePrompt = document.getElementById('ttw-consolidate-prompt')?.value || '';
+        }
         AppState.settings.useTavernApi = document.getElementById('ttw-use-tavern-api')?.checked ?? true;
         AppState.settings.parallelEnabled = AppState.config.parallel.enabled;
         AppState.settings.parallelConcurrency = AppState.config.parallel.concurrency;

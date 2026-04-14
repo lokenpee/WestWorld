@@ -282,7 +282,7 @@ const {
     getExportBaseName,
 } = exportNameService;
 
-let saveCurrentSettings = () => settingsPersistenceService?.saveCurrentSettings();
+let saveCurrentSettings = (...args) => settingsPersistenceService?.saveCurrentSettings(...args);
 let loadSavedSettings = () => settingsPersistenceService?.loadSavedSettings();
 let _initializeModalState = () => modalLifecycle?.initializeModalState();
 let _restoreModalData = () => modalLifecycle?.restoreModalData();

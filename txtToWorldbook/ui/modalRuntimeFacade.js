@@ -22,9 +22,9 @@ export function createModalRuntimeFacade(deps = {}) {
         modalEventBinder.bindModalEvents(getModalContainer());
     }
 
-    function saveCurrentSettings() {
+    function saveCurrentSettings(options) {
         if (!settingsPersistenceService) return;
-        settingsPersistenceService.saveCurrentSettings();
+        settingsPersistenceService.saveCurrentSettings(options);
     }
 
     function loadSavedSettings() {

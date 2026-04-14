@@ -1,4 +1,6 @@
-﻿export function bindActionEvents(deps = {}) {
+﻿import { defaultConsolidatePrompt, defaultWorldbookPrompt } from '../core/constants.js';
+
+export function bindActionEvents(deps = {}) {
     const {
         AppState,
         handleStartConversion,
@@ -455,6 +457,28 @@ export function bindSettingEvents(deps = {}) {
         handlePluginSelfUpdate,
     } = deps;
 
+    const getPromptDefaultValue = (type) => {
+        if (type === 'worldbook') return defaultWorldbookPrompt;
+        if (type === 'consolidate') return defaultConsolidatePrompt;
+        return '';
+    };
+
+    const savePromptByType = (type) => {
+        const textarea = document.getElementById(`ttw-${type}-prompt`);
+        if (!textarea) return;
+
+        if (type === 'worldbook') {
+            AppState.settings.customWorldbookPrompt = textarea.value || '';
+        } else if (type === 'consolidate') {
+            AppState.settings.customConsolidatePrompt = textarea.value || '';
+        }
+
+        saveCurrentSettings({ syncPromptFieldsFromDom: false });
+        if (ErrorHandler && typeof ErrorHandler.showUserSuccess === 'function') {
+            ErrorHandler.showUserSuccess('提示词已保存');
+        }
+    };
+
     EventDelegate.batchOn(modalContainer, {
         '#ttw-use-tavern-api': { change: () => { handleUseTavernApiChange(); saveCurrentSettings(); } },
         '#ttw-api-provider': { change: () => { handleProviderChange('main'); saveCurrentSettings(); } },
@@ -508,7 +532,26 @@ export function bindSettingEvents(deps = {}) {
         '#ttw-test-chapter-regex': { click: testChapterRegex },
         '#ttw-update-plugin-btn': { click: () => { if (typeof handlePluginSelfUpdate === 'function') handlePluginSelfUpdate(); } },
         '.ttw-chapter-preset': { click: (e, btn) => { const regex = btn.dataset.regex; document.getElementById('ttw-chapter-regex').value = regex; AppState.config.chapterRegex.pattern = regex; saveCurrentSettings(); } },
-        '.ttw-reset-prompt': { click: (e, btn) => { const type = btn.getAttribute('data-type'); const textarea = document.getElementById(`ttw-${type}-prompt`); if (textarea) { textarea.value = ''; saveCurrentSettings(); } } }
+        '.ttw-reset-prompt': {
+            click: (e, btn) => {
+                const type = btn.getAttribute('data-type');
+                const textarea = document.getElementById(`ttw-${type}-prompt`);
+                if (!textarea) return;
+
+                if (type === 'worldbook' || type === 'consolidate') {
+                    textarea.value = getPromptDefaultValue(type);
+                    if (ErrorHandler && typeof ErrorHandler.showUserSuccess === 'function') {
+                        ErrorHandler.showUserSuccess('已恢复默认内容，请点击保存按钮生效');
+                    }
+                    return;
+                }
+
+                textarea.value = '';
+                saveCurrentSettings({ syncPromptFieldsFromDom: true });
+            }
+        },
+        '#ttw-save-worldbook-prompt': { click: () => savePromptByType('worldbook') },
+        '#ttw-save-consolidate-prompt': { click: () => savePromptByType('consolidate') }
     });
 
     ['ttw-api-key', 'ttw-api-endpoint', 'ttw-api-model', 'ttw-api-max-tokens', 'ttw-chunk-size', 'ttw-api-timeout', 'ttw-api-key-main', 'ttw-api-endpoint-main', 'ttw-api-model-main', 'ttw-api-max-tokens-main', 'ttw-api-key-director', 'ttw-api-endpoint-director', 'ttw-api-model-director', 'ttw-api-max-tokens-director'].forEach((id) => {
@@ -527,9 +570,9 @@ export function bindPromptEvents(deps = {}) {
         saveCurrentSettings,
     } = deps;
 
-    ['ttw-worldbook-prompt', 'ttw-plot-prompt', 'ttw-style-prompt', 'ttw-suffix-prompt', 'ttw-consolidate-prompt'].forEach((id) => {
+    ['ttw-plot-prompt', 'ttw-style-prompt', 'ttw-suffix-prompt'].forEach((id) => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', saveCurrentSettings);
+        if (el) el.addEventListener('input', () => saveCurrentSettings({ syncPromptFieldsFromDom: true }));
     });
 }
 
