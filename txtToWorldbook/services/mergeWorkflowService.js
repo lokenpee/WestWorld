@@ -56,6 +56,36 @@ export function createMergeWorkflowService(deps = {}) {
         return mergeContentByFieldFusion(content, '');
     }
 
+    function getEntryContent(entry) {
+        if (!entry || typeof entry !== 'object') return '';
+        if (typeof entry['内容'] === 'string') return entry['内容'];
+        if (typeof entry.content === 'string') return entry.content;
+        return '';
+    }
+
+    function setEntryContent(entry, content) {
+        if (!entry || typeof entry !== 'object') return;
+        entry['内容'] = String(content || '');
+        if (Object.prototype.hasOwnProperty.call(entry, 'content')) {
+            delete entry.content;
+        }
+    }
+
+    function normalizeCompareText(text) {
+        return String(text || '').replace(/\r\n?/g, '\n').trim();
+    }
+    function injectConsolidateContent(template, content) {
+        const marker = '{CONTENT}';
+        const safeTemplate = String(template || '');
+        const safeContent = String(content || '');
+        if (safeTemplate.includes(marker)) {
+            return safeTemplate.split(marker).join(safeContent);
+        }
+
+        // 兜底：即使用户误删占位符，也保证把待整理正文注入给 AI。
+        return `${safeTemplate}\n\n## 原始内容\n${safeContent}`;
+    }
+
     function getGlobalConsolidatePromptTemplate() {
         const custom = String(AppState.settings.customConsolidatePrompt || '').trim();
         return custom || defaultConsolidatePrompt;
@@ -63,12 +93,15 @@ export function createMergeWorkflowService(deps = {}) {
 
     async function consolidateEntry(category, entryName, promptTemplate) {
         const entry = AppState.worldbook.generated[category]?.[entryName];
-        if (!entry || !entry['内容']) return;
+        if (!entry) return { changed: false, reason: 'entry_not_found' };
 
-        const preCleanedContent = dedupeStructuredContent(entry['内容']);
+        const rawContent = getEntryContent(entry);
+        if (!String(rawContent || '').trim()) return { changed: false, reason: 'empty_content' };
+
+        const preCleanedContent = dedupeStructuredContent(rawContent);
 
         const template = (promptTemplate && promptTemplate.trim()) ? promptTemplate.trim() : getGlobalConsolidatePromptTemplate();
-        const prompt = `${template.replace('{CONTENT}', preCleanedContent)}\n\n【强制输出要求】\n1. 去重目标是字段重复，不是删减事实。\n2. 同字段同内容只保留一份，禁止重复输出。\n3. 同字段不同内容必须融合保留，不得覆盖或遗漏。\n4. 禁止输出“字段补充1/补充2/补充N”键名，补充信息必须并入主字段。\n5. 若同一字段有多条信息，写在同一个字段值内（用“；”分隔）。\n6. 尽量采用“字段: 值”的结构化格式输出。\n7. 不要输出解释文字，只输出整理后的正文。`;
+        const prompt = `${injectConsolidateContent(template, preCleanedContent)}\n\n【强制输出要求】\n1. 去重目标是字段重复，不是删减事实。\n2. 同字段同内容只保留一份，禁止重复输出。\n3. 同字段不同信息必须融合保留，不得覆盖或遗漏。\n4. 禁止输出“字段补充1/补充2/补充N”键名，补充信息必须并入主字段。\n5. 若同一字段有多条信息，写在同一个字段值内（用“；”分隔）。\n6. 尽量采用“字段: 值”的结构化格式输出。\n7. 不要输出解释文字，只输出整理后的正文。`;
         let response = await callAPI(getLanguagePrefix() + prompt);
 
         response = filterResponseContent(response);
@@ -78,21 +111,41 @@ export function createMergeWorkflowService(deps = {}) {
             throw new Error('AI 返回了空内容，保留原条目内容');
         }
 
-        const mergedAfterApi = mergeContentByFieldFusion(preCleanedContent, finalContent);
-        entry['内容'] = dedupeStructuredContent(mergedAfterApi);
+        const aiCleanedContent = dedupeStructuredContent(finalContent);
+        const before = normalizeCompareText(rawContent);
+        const after = normalizeCompareText(aiCleanedContent || finalContent);
+
+        // 以 AI 整理后的内容为最终结果，避免被旧内容二次融合后看起来“未变化”。
+        setEntryContent(entry, after);
         if (Array.isArray(entry['关键词'])) {
             entry['关键词'] = [...new Set(entry['关键词'])];
         }
+
+        return {
+            changed: before !== after,
+            reason: before !== after ? 'updated' : 'no_diff',
+        };
     }
 
     function consolidateEntryLocal(category, entryName) {
         const entry = AppState.worldbook.generated[category]?.[entryName];
-        if (!entry || !entry['内容']) return;
+        if (!entry) return { changed: false, reason: 'entry_not_found' };
 
-        entry['内容'] = dedupeStructuredContent(entry['内容']);
+        const rawContent = getEntryContent(entry);
+        if (!String(rawContent || '').trim()) return { changed: false, reason: 'empty_content' };
+
+        const before = normalizeCompareText(rawContent);
+        const after = normalizeCompareText(dedupeStructuredContent(rawContent));
+
+        setEntryContent(entry, after);
         if (Array.isArray(entry['关键词'])) {
             entry['关键词'] = [...new Set(entry['关键词'])];
         }
+
+        return {
+            changed: before !== after,
+            reason: before !== after ? 'updated' : 'no_diff',
+        };
     }
 
     function showConsolidateCategorySelector() {
@@ -338,6 +391,8 @@ export function createMergeWorkflowService(deps = {}) {
         const semaphore = new Semaphore(AppState.config.parallel.concurrency);
         let completed = 0;
         let failed = 0;
+        let changed = 0;
+        let unchanged = 0;
         const failedEntries = [];
 
         const processOne = async (entry, index) => {
@@ -357,14 +412,22 @@ export function createMergeWorkflowService(deps = {}) {
 
             try {
                 updateStreamContent(`📝 [${index + 1}/${entries.length}] ${entry.category} - ${entry.name}\n`);
+                let result = null;
                 if (mode === 'local') {
-                    consolidateEntryLocal(entry.category, entry.name);
+                    result = consolidateEntryLocal(entry.category, entry.name);
                 } else {
-                    await consolidateEntry(entry.category, entry.name, entry.promptTemplate);
+                    result = await consolidateEntry(entry.category, entry.name, entry.promptTemplate);
                 }
+
                 completed++;
+                if (result && result.changed) {
+                    changed++;
+                    updateStreamContent('   ✅ 完成（内容已更新）\n');
+                } else {
+                    unchanged++;
+                    updateStreamContent('   ⚪ 完成（内容无变化）\n');
+                }
                 updateProgress(((completed + failed) / entries.length) * 100, `${modeText}中 (${completed}✅ ${failed}❌ / ${entries.length})`);
-                updateStreamContent('   ✅ 完成\n');
             } catch (error) {
                 failed++;
                 failedEntries.push({ category: entry.category, name: entry.name, error: error.message });
@@ -379,8 +442,8 @@ export function createMergeWorkflowService(deps = {}) {
 
         lastConsolidateFailedEntries = failedEntries;
 
-        updateProgress(100, `${modeText}完成: 成功 ${completed}, 失败 ${failed}`);
-        updateStreamContent(`\n${'='.repeat(50)}\n✅ ${modeText}完成！成功 ${completed}, 失败 ${failed}\n`);
+        updateProgress(100, `${modeText}完成: 成功 ${completed}, 失败 ${failed}, 更新 ${changed}, 无变化 ${unchanged}`);
+        updateStreamContent(`\n${'='.repeat(50)}\n✅ ${modeText}完成！成功 ${completed}, 失败 ${failed}, 更新 ${changed}, 无变化 ${unchanged}\n`);
 
         if (failedEntries.length > 0) {
             updateStreamContent('\n❗ 失败条目:\n');
@@ -393,9 +456,14 @@ export function createMergeWorkflowService(deps = {}) {
 
         updateWorldbookPreview();
 
-        let msg = `条目${modeText}完成！\n成功: ${completed}\n失败: ${failed}`;
+        let msg = `条目${modeText}完成！\n成功: ${completed}\n失败: ${failed}\n更新: ${changed}\n无变化: ${unchanged}`;
         if (failed > 0) {
             msg += '\n\n再次点击"整理条目"可以只选失败项重试';
+            ErrorHandler.showUserError(msg);
+            return;
+        }
+        if (completed > 0 && changed === 0) {
+            msg += '\n\n本次没有条目内容发生变化。可检查：\n1) 是否选中了目标条目\n2) AI 返回是否与原文近似\n3) 提示词是否要求了明确改写结构';
             ErrorHandler.showUserError(msg);
             return;
         }
