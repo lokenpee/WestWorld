@@ -19,6 +19,33 @@ export function createRuntimeActionsFacade(deps = {}) {
         replaceAndCleanService.showBatchDeleteRepeatedSegmentsModal();
     }
 
+    function previewRepeatedSegmentsCleanup(inputText, rangeMode = 'all', selectedIndices = []) {
+        if (!replaceAndCleanService) {
+            return { ok: false, error: '清洗服务未初始化' };
+        }
+        if (typeof replaceAndCleanService.previewRepeatedSegmentsCleanup !== 'function') {
+            return { ok: false, error: '当前版本不支持预览清洗' };
+        }
+        return replaceAndCleanService.previewRepeatedSegmentsCleanup({
+            inputText,
+            rangeMode,
+            selectedIndices,
+        });
+    }
+
+    function executeRepeatedSegmentsCleanup(segments = [], chapterIndices = []) {
+        if (!replaceAndCleanService) {
+            return { ok: false, error: '清洗服务未初始化' };
+        }
+        if (typeof replaceAndCleanService.executeRepeatedSegmentsCleanup !== 'function') {
+            return { ok: false, error: '当前版本不支持执行清洗' };
+        }
+        return replaceAndCleanService.executeRepeatedSegmentsCleanup({
+            segments,
+            chapterIndices,
+        });
+    }
+
     function showEntryConfigModal(category, entryName) {
         if (!entryConfigModals) return;
         entryConfigModals.showEntryConfigModal(category, entryName);
@@ -56,6 +83,8 @@ export function createRuntimeActionsFacade(deps = {}) {
     return {
         showCleanTagsModal,
         showBatchDeleteRepeatedSegmentsModal,
+        previewRepeatedSegmentsCleanup,
+        executeRepeatedSegmentsCleanup,
         showEntryConfigModal,
         showPlotOutlineConfigModal,
         showCategoryConfigModal,

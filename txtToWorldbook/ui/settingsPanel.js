@@ -65,7 +65,7 @@ ${buildApiConfigCard('director', '🎬 导演AI配置')}
     </div>`;
 }
 
-const PLUGIN_VERSION = 'v3.5.3';
+const PLUGIN_VERSION = 'v3.5.6';
 
 function buildPluginUpdateHtml() {
     return '';
@@ -387,6 +387,34 @@ function buildPromptConfigHtml() {
     </div>`;
 }
 
+function buildInlineRepeatCleanupHtml() {
+    return `
+    <div class="ttw-clean-repeat-inline">
+        <div class="ttw-clean-repeat-inline-head">
+            <span class="ttw-clean-repeat-inline-title">🧹 清洗重复段落</span>
+            <span class="ttw-clean-repeat-inline-badge">精确字面量匹配</span>
+        </div>
+        <div class="ttw-setting-hint" style="margin-bottom:8px;">
+            粘贴要删除的重复片段，先预览命中，再执行删除。多个片段可用空行分隔；若无空行则按行处理。
+        </div>
+        <textarea id="ttw-inline-clean-repeat-input" rows="5" class="ttw-textarea-small" placeholder="例如：\n（月影霜华 作者:江东孙伯父）\n\n本章完\n\n请收藏本站..."></textarea>
+        <div id="ttw-inline-clean-repeat-hint" class="ttw-setting-hint" style="margin-top:6px;">尚未解析片段</div>
+        <div class="ttw-clean-repeat-inline-range">
+            <label><input type="radio" name="ttw-inline-clean-repeat-range" value="all" checked> 全部章节</label>
+            <label><input type="radio" name="ttw-inline-clean-repeat-range" value="unprocessed"> 仅未处理章节</label>
+        </div>
+        <div class="ttw-clean-repeat-inline-actions">
+            <button id="ttw-inline-clean-repeat-preview" class="ttw-btn ttw-btn-small">🔍 预览命中</button>
+            <button id="ttw-inline-clean-repeat-execute" class="ttw-btn ttw-btn-small ttw-btn-warning" disabled>🧹 执行删除</button>
+            <button id="ttw-clean-repeat-segments" class="ttw-btn-small" title="打开高级模式（支持章节自定义范围）">⚙️ 高级模式</button>
+        </div>
+        <div id="ttw-inline-clean-repeat-results" class="ttw-clean-repeat-inline-results" style="display:none;">
+            <div id="ttw-inline-clean-repeat-summary" style="margin-bottom:8px;"></div>
+            <div id="ttw-inline-clean-repeat-details" style="font-size:12px;color:#ddd;"></div>
+        </div>
+    </div>`;
+}
+
 function buildFileUploadSectionHtml() {
     return `
     <div class="ttw-section ttw-mode-txt">
@@ -394,7 +422,6 @@ function buildFileUploadSectionHtml() {
             <span>📄 文件上传</span>
             <div style="display:flex;gap:8px;">
                 <button id="ttw-import-json" class="ttw-btn-small" title="导入已有世界书JSON进行合并">📥 合并世界书</button>
-                <button id="ttw-clean-repeat-segments" class="ttw-btn-small" title="批量删除小说中的重复广告段落/固定片段">🧹 清洗重复段落</button>
                 <button id="ttw-import-task" class="ttw-btn-small" title="导入工程包并恢复章节队列、故事大纲、当前章节概览与世界书">📥 导入工程包</button>
                 <button id="ttw-export-task" class="ttw-btn-small" title="导出完整工程包，后续可一键恢复">📤 导出工程包</button>
             </div>
@@ -415,6 +442,7 @@ function buildFileUploadSectionHtml() {
                 <span style="font-size:12px;color:#3498db;white-space:nowrap;">📖 导出名称:</span>
                 <input type="text" id="ttw-novel-name-input" placeholder="输入小说名（用于导出文件名）" style="flex:1;min-width:0;background:rgba(0,0,0,0.3);border:1px solid #555;border-radius:4px;padding:4px 8px;color:#eee;font-size:12px;outline:none;box-sizing:border-box;" />
             </div>
+            ${buildInlineRepeatCleanupHtml()}
         </div>
     </div>`;
 }

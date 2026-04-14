@@ -142,8 +142,12 @@ export function bindExportEvents(deps = {}) {
 export function bindFileEvents(deps = {}) {
     const {
         AppState,
+        ErrorHandler,
+        confirmAction,
         handleFileSelect,
         handleClearFile,
+        previewRepeatedSegmentsCleanup,
+        executeRepeatedSegmentsCleanup,
     } = deps;
 
     const uploadArea = document.getElementById('ttw-upload-area');
@@ -173,6 +177,217 @@ export function bindFileEvents(deps = {}) {
     document.getElementById('ttw-novel-name-input').addEventListener('input', (e) => {
         AppState.file.novelName = e.target.value.trim();
     });
+
+    const cleanInput = document.getElementById('ttw-inline-clean-repeat-input');
+    const cleanHint = document.getElementById('ttw-inline-clean-repeat-hint');
+    const cleanPreviewBtn = document.getElementById('ttw-inline-clean-repeat-preview');
+    const cleanExecBtn = document.getElementById('ttw-inline-clean-repeat-execute');
+    const cleanResultWrap = document.getElementById('ttw-inline-clean-repeat-results');
+    const cleanSummary = document.getElementById('ttw-inline-clean-repeat-summary');
+    const cleanDetails = document.getElementById('ttw-inline-clean-repeat-details');
+    const rangeEls = document.querySelectorAll('input[name="ttw-inline-clean-repeat-range"]');
+
+    if (!cleanInput || !cleanPreviewBtn || !cleanExecBtn || !cleanResultWrap || !cleanSummary || !cleanDetails) {
+        return;
+    }
+
+    const showError = (message) => {
+        if (ErrorHandler && typeof ErrorHandler.showUserError === 'function') {
+            ErrorHandler.showUserError(message);
+            return;
+        }
+        alert(message);
+    };
+
+    const showSuccess = (message) => {
+        if (ErrorHandler && typeof ErrorHandler.showUserSuccess === 'function') {
+            ErrorHandler.showUserSuccess(message);
+            return;
+        }
+        alert(message);
+    };
+
+    const escapeHtml = (value) => String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const parseSegmentsForHint = (input) => {
+        const raw = String(input || '').replace(/\r\n?/g, '\n').trim();
+        if (!raw) return [];
+
+        const blocks = raw
+            .split(/\n\s*\n+/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+
+        const source = blocks.length > 1
+            ? blocks
+            : raw
+                .split('\n')
+                .map((item) => item.trim())
+                .filter(Boolean);
+
+        const unique = [];
+        const seen = new Set();
+        for (const item of source) {
+            if (!item || seen.has(item)) continue;
+            seen.add(item);
+            unique.push(item);
+        }
+        return unique;
+    };
+
+    const getRangeMode = () => {
+        const selected = document.querySelector('input[name="ttw-inline-clean-repeat-range"]:checked');
+        return selected ? selected.value : 'all';
+    };
+
+    const renderPreviewResult = (preview) => {
+        cleanResultWrap.style.display = 'block';
+
+        if (!preview || preview.totalHits <= 0) {
+            cleanSummary.innerHTML = '<span style="color:#95a5a6;">预览完成：未命中任何重复片段。</span>';
+            cleanDetails.innerHTML = '';
+            cleanExecBtn.disabled = true;
+            cleanExecBtn.textContent = '🧹 执行删除';
+            return;
+        }
+
+        cleanSummary.innerHTML = `
+            <div style="color:#2ecc71;font-weight:bold;">预览命中 ${preview.totalHits} 次，涉及 ${preview.chapterStats.length} 章，预计删除 ${preview.totalRemovedChars} 字。</div>
+            <div style="font-size:11px;color:#aaa;margin-top:4px;">匹配方式：精确字面量匹配（不使用正则）。</div>
+        `;
+
+        const chapterLines = preview.chapterStats
+            .slice(0, 12)
+            .map((item) => {
+                const chapter = escapeHtml(item.chapterTitle || `第${item.index + 1}章`);
+                return `<li>${chapter}：命中 ${item.hits} 次，删除 ${item.removedChars} 字</li>`;
+            })
+            .join('');
+
+        const segmentLines = preview.segmentHits
+            .filter((item) => item.hits > 0)
+            .sort((a, b) => b.hits - a.hits)
+            .slice(0, 6)
+            .map((item) => {
+                const text = escapeHtml(item.segment.slice(0, 40));
+                const suffix = item.segment.length > 40 ? '...' : '';
+                return `<li>片段「${text}${suffix}」命中 ${item.hits} 次</li>`;
+            })
+            .join('');
+
+        cleanDetails.innerHTML = `
+            <div style="font-size:12px;color:#ddd;margin-bottom:6px;">章节命中（最多12条）</div>
+            <ul style="margin:0 0 8px 16px;padding:0;line-height:1.7;">${chapterLines}</ul>
+            <div style="font-size:12px;color:#ddd;margin-bottom:6px;">片段统计（Top 6）</div>
+            <ul style="margin:0 0 0 16px;padding:0;line-height:1.7;">${segmentLines || '<li>无</li>'}</ul>
+        `;
+
+        cleanExecBtn.disabled = false;
+        cleanExecBtn.textContent = `🧹 执行删除（${preview.totalHits} 处）`;
+    };
+
+    let previewState = null;
+
+    const markPreviewDirty = () => {
+        previewState = null;
+        cleanExecBtn.disabled = true;
+        cleanExecBtn.textContent = '🧹 执行删除';
+        cleanResultWrap.style.display = 'none';
+    };
+
+    const refreshHint = () => {
+        const segments = parseSegmentsForHint(cleanInput.value || '');
+        if (!cleanHint) return;
+        cleanHint.textContent = segments.length > 0
+            ? `已解析 ${segments.length} 个待删片段（去重后）`
+            : '尚未解析片段';
+    };
+
+    cleanInput.addEventListener('input', () => {
+        refreshHint();
+        markPreviewDirty();
+    });
+
+    rangeEls.forEach((el) => {
+        el.addEventListener('change', markPreviewDirty);
+    });
+
+    cleanPreviewBtn.addEventListener('click', () => {
+        if (typeof previewRepeatedSegmentsCleanup !== 'function') {
+            showError('当前版本不支持预览清洗');
+            return;
+        }
+
+        const rangeMode = getRangeMode();
+        const previewResult = previewRepeatedSegmentsCleanup(cleanInput.value || '', rangeMode, []);
+        if (!previewResult || !previewResult.ok) {
+            showError((previewResult && previewResult.error) || '预览失败');
+            return;
+        }
+
+        previewState = {
+            segments: previewResult.segments,
+            chapterIndices: previewResult.chapterIndices,
+            preview: previewResult.preview,
+        };
+
+        renderPreviewResult(previewResult.preview);
+    });
+
+    cleanExecBtn.addEventListener('click', async () => {
+        if (!previewState || !previewState.preview || previewState.preview.totalHits <= 0) {
+            showError('请先预览并确认有命中内容');
+            return;
+        }
+
+        const preview = previewState.preview;
+        const confirmed = typeof confirmAction === 'function'
+            ? await confirmAction(
+                `确定执行删除吗？\n\n将删除 ${preview.totalHits} 处重复片段，涉及 ${preview.chapterStats.length} 章。`,
+                { title: '确认批量删除', danger: true },
+            )
+            : window.confirm(`确定执行删除吗？\n\n将删除 ${preview.totalHits} 处重复片段，涉及 ${preview.chapterStats.length} 章。`);
+
+        if (!confirmed) return;
+
+        if (typeof executeRepeatedSegmentsCleanup !== 'function') {
+            showError('当前版本不支持执行清洗');
+            return;
+        }
+
+        const executeResult = executeRepeatedSegmentsCleanup(previewState.segments, previewState.chapterIndices);
+        if (!executeResult || !executeResult.ok) {
+            showError((executeResult && executeResult.error) || '执行失败');
+            return;
+        }
+
+        const result = executeResult.result || {
+            changedIndices: [],
+            resetProcessedIndices: [],
+            deletedHits: 0,
+            deletedChars: 0,
+        };
+
+        if (result.changedIndices.length === 0) {
+            showError('执行完成，但没有检测到可删除内容');
+            return;
+        }
+
+        const resetCount = result.resetProcessedIndices.length;
+        const suffix = resetCount > 0
+            ? `，其中 ${resetCount} 章原为已处理，已重置为未处理`
+            : '';
+        showSuccess(`清洗完成：删除 ${result.deletedHits} 处，影响 ${result.changedIndices.length} 章，共移除约 ${result.deletedChars} 字${suffix}`);
+
+        markPreviewDirty();
+    });
+
+    refreshHint();
 }
 
 export function bindStreamEvents(deps = {}) {

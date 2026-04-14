@@ -27,6 +27,8 @@ export function createFeaturePlaceholders() {
         showManualMergeUI: noop,
         showAliasMergeUI: noop,
         showBatchDeleteRepeatedSegmentsModal: noop,
+        previewRepeatedSegmentsCleanup: () => ({ ok: false, error: '清洗服务未初始化' }),
+        executeRepeatedSegmentsCleanup: () => ({ ok: false, error: '清洗服务未初始化' }),
         deleteWorldbookEntry: noop,
     };
 }

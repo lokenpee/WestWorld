@@ -59,6 +59,8 @@ export function createModalEventBinder(deps) {
         updateStreamContent,
         showPromptPreview,
         showPlotOutlineConfigModal,
+        previewRepeatedSegmentsCleanup,
+        executeRepeatedSegmentsCleanup,
         importAndMergeWorldbook,
         loadTaskState,
         saveTaskState,
@@ -114,8 +116,12 @@ export function createModalEventBinder(deps) {
         });
         bindFileEventsUI({
             AppState,
+            ErrorHandler,
+            confirmAction,
             handleFileSelect,
             handleClearFile,
+            previewRepeatedSegmentsCleanup,
+            executeRepeatedSegmentsCleanup,
         });
         bindActionEventsUI({
             AppState,

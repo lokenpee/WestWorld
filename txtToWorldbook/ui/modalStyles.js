@@ -479,6 +479,69 @@ export function ensureModalStyles() {
             margin-top: 16px;
             border: 1px solid var(--ttw-border-color);
         }
+
+        .ttw-clean-repeat-inline {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(46, 204, 113, 0.28);
+            background: rgba(46, 204, 113, 0.08);
+        }
+
+        .ttw-clean-repeat-inline-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+
+        .ttw-clean-repeat-inline-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #d6ffe6;
+        }
+
+        .ttw-clean-repeat-inline-badge {
+            font-size: 11px;
+            color: #8de9b6;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(141, 233, 182, 0.25);
+            border-radius: 999px;
+            padding: 3px 8px;
+            white-space: nowrap;
+        }
+
+        .ttw-clean-repeat-inline-range {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--ttw-text-secondary);
+        }
+
+        .ttw-clean-repeat-inline-range label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .ttw-clean-repeat-inline-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .ttw-clean-repeat-inline-results {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+        }
         
         /* --- 记忆队列 --- */
         .ttw-memory-queue {

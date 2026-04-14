@@ -554,6 +554,99 @@ tochao">thinking\ntucao\ntochao</textarea>
         };
     }
 
+    function previewRepeatedSegmentsCleanup(options = {}) {
+        const {
+            inputText = '',
+            rangeMode = 'all',
+            selectedIndices = [],
+        } = options;
+
+        const segments = parseRepeatedSegments(inputText);
+        if (segments.length === 0) {
+            return {
+                ok: false,
+                error: '请先输入至少一个重复片段',
+                segments: [],
+                chapterIndices: [],
+                preview: null,
+            };
+        }
+
+        const selectedSet = selectedIndices instanceof Set
+            ? selectedIndices
+            : new Set(
+                Array.isArray(selectedIndices)
+                    ? selectedIndices
+                        .map((item) => Number.parseInt(item, 10))
+                        .filter((item) => Number.isInteger(item) && item >= 0)
+                    : [],
+            );
+
+        const chapterIndices = getTargetChapterIndices(rangeMode, selectedSet);
+        if (chapterIndices.length === 0) {
+            return {
+                ok: false,
+                error: '当前范围未选中任何章节',
+                segments,
+                chapterIndices: [],
+                preview: null,
+            };
+        }
+
+        const preview = buildCleanupPreview(segments, chapterIndices);
+        return {
+            ok: true,
+            error: '',
+            rangeMode,
+            segments,
+            chapterIndices,
+            preview,
+        };
+    }
+
+    function executeRepeatedSegmentsCleanup(options = {}) {
+        const {
+            segments = [],
+            chapterIndices = [],
+        } = options;
+
+        if (!Array.isArray(segments) || segments.length === 0) {
+            return {
+                ok: false,
+                error: '请先预览并确认有命中内容',
+                result: null,
+            };
+        }
+
+        if (!Array.isArray(chapterIndices) || chapterIndices.length === 0) {
+            return {
+                ok: false,
+                error: '当前范围未选中任何章节',
+                result: null,
+            };
+        }
+
+        const result = applyRepeatedSegmentsCleanup(segments, chapterIndices);
+
+        if (result.changedIndices.length > 0) {
+            if (typeof updateMemoryQueueUI === 'function') {
+                updateMemoryQueueUI();
+            }
+            if (typeof updateStartButtonState === 'function') {
+                updateStartButtonState(false);
+            }
+            if (typeof updateWorldbookPreview === 'function') {
+                updateWorldbookPreview();
+            }
+        }
+
+        return {
+            ok: true,
+            error: '',
+            result,
+        };
+    }
+
     function buildChapterCheckboxList(selectedIndices) {
         const queue = Array.isArray(AppState.memory.queue) ? AppState.memory.queue : [];
         return queue.map((memory, idx) => {
@@ -852,5 +945,7 @@ tochao">thinking\ntucao\ntochao</textarea>
     return {
         showCleanTagsModal,
         showBatchDeleteRepeatedSegmentsModal,
+        previewRepeatedSegmentsCleanup,
+        executeRepeatedSegmentsCleanup,
     };
 }
