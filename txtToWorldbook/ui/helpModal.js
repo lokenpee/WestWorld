@@ -29,18 +29,18 @@ export function createHelpModal(deps = {}) {
 </div>
 
 <div style="margin-bottom:16px;">
-<h4 style="color:#9b59b6;margin:0 0 10px;">🏷️ 自定义提取分类</h4>
+<h4 style="color:#9b59b6;margin:0 0 10px;">🏷️ 提取分类</h4>
 <ul style="margin:0;padding-left:20px;line-height:1.8;color:#ccc;">
-<li>内置分类：<strong>角色、地点、组织</strong>；预设分类：<strong>道具、玩法、章节剧情、角色内心</strong></li>
-<li>支持添加/编辑/删除自定义分类，每个分类可配置名称、条目示例、关键词示例、内容提取指南</li>
-<li>每个分类可配置<strong>默认导出位置/深度/顺序/自动递增</strong></li>
+<li>主界面默认平铺展示：<strong>角色、地点、组织、道具、章节剧情</strong>，可直接勾选</li>
+<li>角色/地点/组织默认启用；道具/章节剧情默认关闭</li>
+<li>分类配置会参与 <code>{DYNAMIC_JSON_TEMPLATE}</code> 的动态生成</li>
 </ul>
 </div>
 
 <div style="margin-bottom:16px;">
 <h4 style="color:#27ae60;margin:0 0 10px;">📝 提示词系统</h4>
 <ul style="margin:0;padding-left:20px;line-height:1.8;color:#ccc;">
-<li><strong>世界书词条提示词</strong>（核心，含 <code>{DYNAMIC_JSON_TEMPLATE}</code> 占位符）</li>
+<li><strong>txt转世界书主要提示词</strong>（核心，含 <code>{DYNAMIC_JSON_TEMPLATE}</code> 占位符）</li>
 <li>可选：<strong>剧情大纲</strong>、<strong>文风配置</strong>、<strong>后缀提示词</strong></li>
 <li><strong>💬消息链配置</strong>：将提示词按对话补全预设格式发送，每条消息可指定角色（🔷系统/🟢用户/🟡AI助手）</li>
 <li>消息链中使用 <code>{PROMPT}</code> 占位符代表实际组装好的提示词内容</li>
@@ -50,7 +50,7 @@ export function createHelpModal(deps = {}) {
 </div>
 
 <div style="margin-bottom:16px;">
-<h4 style="color:#e67e22;margin:0 0 10px;">📚 默认世界书条目</h4>
+<h4 style="color:#e67e22;margin:0 0 10px;">📚 向世界书中添加默认条目</h4>
 <ul style="margin:0;padding-left:20px;line-height:1.8;color:#ccc;">
 <li>可视化添加/编辑/删除默认条目，每个条目可配置分类、名称、关键词、内容、位置/深度/顺序</li>
 <li>转换时<strong>自动添加</strong>到世界书，也可<strong>立即应用</strong>到当前世界书</li>

@@ -355,11 +355,6 @@ function toggleCollapsePanel(contentId, header) {
 }
 
 export function bindCollapsePanelEvents() {
-    const categoriesHeader = document.querySelector('[data-target="ttw-categories-content"]');
-    if (categoriesHeader) {
-        categoriesHeader.addEventListener('click', () => toggleCollapsePanel('ttw-categories-content', categoriesHeader));
-    }
-
     const defaultEntriesHeader = document.querySelector('[data-target="ttw-default-entries-content"]');
     if (defaultEntriesHeader) {
         defaultEntriesHeader.addEventListener('click', () => toggleCollapsePanel('ttw-default-entries-content', defaultEntriesHeader));
@@ -369,7 +364,7 @@ export function bindCollapsePanelEvents() {
         header.addEventListener('click', (e) => {
             if (e.target.type === 'checkbox') return;
             const targetId = header.getAttribute('data-target');
-            if (targetId === 'ttw-default-entries-content' || targetId === 'ttw-categories-content') return;
+            if (targetId === 'ttw-default-entries-content') return;
             toggleCollapsePanel(targetId, header);
         });
     });

@@ -14,9 +14,21 @@ export function createCategoryListView(deps = {}) {
         const listContainer = document.getElementById('ttw-categories-list');
         if (!listContainer) return;
 
+        const primaryOrder = ['角色', '地点', '组织', '道具', '章节剧情'];
+        const primaryOrderMap = new Map(primaryOrder.map((name, index) => [name, index]));
+
+        const sortedCategories = AppState.persistent.customCategories
+            .map((cat, index) => ({ cat, originalIndex: index }))
+            .sort((a, b) => {
+                const aRank = primaryOrderMap.has(a.cat.name) ? primaryOrderMap.get(a.cat.name) : Number.MAX_SAFE_INTEGER;
+                const bRank = primaryOrderMap.has(b.cat.name) ? primaryOrderMap.get(b.cat.name) : Number.MAX_SAFE_INTEGER;
+                if (aRank !== bRank) return aRank - bRank;
+                return String(a.cat.name || '').localeCompare(String(b.cat.name || ''), 'zh-CN');
+            });
+
         const html = ListRenderer.renderItems(
-            AppState.persistent.customCategories,
-            (cat, index) => ListRenderer.renderCategoryItem(cat, index, {
+            sortedCategories,
+            ({ cat, originalIndex }) => ListRenderer.renderCategoryItem(cat, originalIndex, {
                 hasDefault: hasDefaultCategory(cat.name),
             }),
             { emptyMessage: '暂无分类配置' },

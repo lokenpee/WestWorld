@@ -65,7 +65,7 @@ ${buildApiConfigCard('director', '🎬 导演AI配置')}
     </div>`;
 }
 
-const PLUGIN_VERSION = 'v3.5.1';
+const PLUGIN_VERSION = 'v3.5.2';
 
 function buildPluginUpdateHtml() {
     return '';
@@ -232,10 +232,10 @@ export function buildSettingsHtml() {
 
 function buildDefaultEntriesSectionHtml() {
     return `
-    <div class="ttw-prompt-section ttw-mode-txt" style="margin-top:16px;border:1px solid var(--SmartThemeBorderColor,#444);border-radius:8px;overflow:hidden;">
-        <div class="ttw-prompt-header ttw-prompt-header-green" data-target="ttw-default-entries-content">
+    <div class="ttw-prompt-section ttw-mode-txt" style="margin-top:16px;">
+        <div class="ttw-prompt-header" data-target="ttw-default-entries-content">
             <div style="display:flex;align-items:center;gap:8px;">
-                <span>📚</span><span style="font-weight:500;">默认世界书条目</span>
+                <span>📚</span><span style="font-weight:500;">向世界书中添加默认条目</span>
                 <span class="ttw-badge ttw-badge-gray">可选</span>
             </div>
             <span class="ttw-collapse-icon">▶</span>
@@ -256,19 +256,19 @@ function buildDefaultEntriesSectionHtml() {
 function buildWorldbookPromptSectionHtml() {
     return `
     <div class="ttw-prompt-section">
-        <div class="ttw-prompt-header ttw-prompt-header-blue" data-target="ttw-worldbook-content">
+        <div class="ttw-prompt-header" data-target="ttw-worldbook-content">
             <div style="display:flex;align-items:center;gap:8px;">
-                <span>📚</span><span style="font-weight:500;">世界书词条</span>
+                <span>📚</span><span style="font-weight:500;">txt转世界书主要提示词</span>
                 <span class="ttw-badge ttw-badge-blue">必需</span>
             </div>
-            <span class="ttw-collapse-icon">▶</span>
+            <span class="ttw-collapse-icon">▼</span>
         </div>
-        <div id="ttw-worldbook-content" class="ttw-prompt-content">
-            <div class="ttw-setting-hint" style="margin-bottom:10px;">核心提示词。留空使用默认。</div>
-            <div class="ttw-placeholder-hint" style="margin-bottom:10px;padding:8px;background:rgba(231,76,60,0.15);border:1px solid rgba(231,76,60,0.4);border-radius:6px;">
-                <span style="color:#e74c3c;font-weight:bold;">⚠️ 必须包含占位符：</span>
-                <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:3px;color:#f39c12;font-family:monospace;">{DYNAMIC_JSON_TEMPLATE}</code>
-                <div style="font-size:11px;color:#888;margin-top:4px;">此占位符会被自动替换为根据启用分类生成的JSON模板</div>
+        <div id="ttw-worldbook-content" class="ttw-prompt-content" style="display:block;">
+            <div class="ttw-setting-hint" style="margin-bottom:8px;">核心提示词。留空使用默认。</div>
+            <div class="ttw-placeholder-hint" style="margin-bottom:10px;">
+                <span style="color:var(--ttw-text-secondary);font-weight:bold;">⚠️ 必须包含占位符：</span>
+                <code>{DYNAMIC_JSON_TEMPLATE}</code>
+                <div style="font-size:11px;color:var(--ttw-text-muted);margin-top:4px;">此占位符会被自动替换为根据启用分类生成的JSON模板</div>
             </div>
             <textarea id="ttw-worldbook-prompt" rows="6" placeholder="留空使用默认..." class="ttw-textarea-small"></textarea>
             <div style="margin-top:8px;"><button class="ttw-btn ttw-btn-small ttw-reset-prompt" data-type="worldbook">🔄 恢复默认</button></div>
@@ -279,7 +279,7 @@ function buildWorldbookPromptSectionHtml() {
 function buildPlotPromptSectionHtml() {
     return `
     <div class="ttw-prompt-section">
-        <div class="ttw-prompt-header ttw-prompt-header-purple" data-target="ttw-plot-content">
+        <div class="ttw-prompt-header" data-target="ttw-plot-content">
             <div style="display:flex;align-items:center;gap:8px;">
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
                     <input type="checkbox" id="ttw-enable-plot">
@@ -293,7 +293,7 @@ function buildPlotPromptSectionHtml() {
             <textarea id="ttw-plot-prompt" rows="4" placeholder="留空使用默认..." class="ttw-textarea-small"></textarea>
             <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="ttw-btn ttw-btn-small ttw-reset-prompt" data-type="plot">🔄 恢复默认</button>
-                <button class="ttw-btn ttw-btn-small" id="ttw-plot-export-config" style="background:rgba(155,89,182,0.3);">⚙️ 导出时的默认配置</button>
+                <button class="ttw-btn ttw-btn-small" id="ttw-plot-export-config">⚙️ 导出时的默认配置</button>
             </div>
         </div>
     </div>`;
@@ -302,7 +302,7 @@ function buildPlotPromptSectionHtml() {
 function buildStylePromptSectionHtml() {
     return `
     <div class="ttw-prompt-section">
-        <div class="ttw-prompt-header ttw-prompt-header-green" data-target="ttw-style-content">
+        <div class="ttw-prompt-header" data-target="ttw-style-content">
             <div style="display:flex;align-items:center;gap:8px;">
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
                     <input type="checkbox" id="ttw-enable-style">
@@ -322,22 +322,22 @@ function buildStylePromptSectionHtml() {
 function buildMessageChainSectionHtml() {
     return `
     <div class="ttw-prompt-section">
-        <div class="ttw-prompt-header" style="background:rgba(230,126,34,0.15);" data-target="ttw-suffix-content">
+        <div class="ttw-prompt-header" data-target="ttw-suffix-content">
             <div style="display:flex;align-items:center;gap:8px;">
-                <span>💬</span><span style="font-weight:500;color:#e67e22;">消息链配置</span>
+                <span>💬</span><span style="font-weight:500;color:var(--ttw-text-secondary);">消息链配置</span>
                 <span class="ttw-badge ttw-badge-gray">可选</span>
             </div>
             <span class="ttw-collapse-icon">▶</span>
         </div>
         <div id="ttw-suffix-content" class="ttw-prompt-content">
-            <div style="margin-bottom:12px;padding:10px;background:rgba(230,126,34,0.1);border-radius:6px;">
-                <label style="font-size:12px;color:#e67e22;font-weight:bold;">📌 后缀提示词（追加到提示词末尾，在消息链转换之前生效）</label>
+            <div style="margin-bottom:12px;padding:10px;background:var(--ttw-bg-medium);border:1px solid var(--ttw-border-color);border-radius:6px;">
+                <label style="font-size:12px;color:var(--ttw-text-secondary);font-weight:bold;">📌 后缀提示词（追加到提示词末尾，在消息链转换之前生效）</label>
                 <textarea id="ttw-suffix-prompt" rows="2" placeholder="例如：请特别注意提取XX信息，修复乱码内容，注意区分同名角色..." class="ttw-textarea-small" style="margin-top:6px;"></textarea>
             </div>
-            <div style="border-top:1px solid rgba(255,255,255,0.1);padding-top:12px;">
+            <div style="border-top:1px solid var(--ttw-border-color);padding-top:12px;">
                 <div class="ttw-setting-hint" style="margin-bottom:8px;line-height:1.6;">
                     💬 配置发送给AI的消息链（类似对话补全预设）。每条消息可指定角色。<br>
-                    <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:3px;font-size:11px;">{PROMPT}</code> 占位符会被替换为实际组装好的提示词内容。
+                    <code>{PROMPT}</code> 占位符会被替换为实际组装好的提示词内容。
                 </div>
                 <div id="ttw-chain-tavern-warning" style="display:none;margin-bottom:8px;padding:8px 10px;background:rgba(231,76,60,0.15);border-left:3px solid #e74c3c;border-radius:0 6px 6px 0;font-size:11px;color:#e74c3c;line-height:1.6;">
                     ⚠️ <strong>酒馆API模式下</strong>，消息角色（system/assistant）会被酒馆的提示词后处理覆盖，且可能注入预设JB内容。<br>
@@ -355,30 +355,18 @@ function buildMessageChainSectionHtml() {
 
 function buildCategoriesSectionHtml() {
     return `
-    <div class="ttw-prompt-section">
-        <div class="ttw-prompt-header" style="background:rgba(155,89,182,0.15);" data-target="ttw-categories-content">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span>🏷️</span><span style="font-weight:500;color:#9b59b6;">自定义提取分类</span>
-            </div>
-            <span class="ttw-collapse-icon">▶</span>
+    <div class="ttw-category-flat-card">
+        <div class="ttw-category-flat-header">
+            <span>🏷️ 提取分类</span>
         </div>
-        <div id="ttw-categories-content" class="ttw-prompt-content">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                <div class="ttw-setting-hint" style="font-size:11px;flex:1;">勾选要提取的分类</div>
-                <div style="display:flex;gap:6px;">
-                    <button id="ttw-add-category" class="ttw-btn ttw-btn-small" style="background:#9b59b6;">➕ 添加</button>
-                    <button id="ttw-reset-categories" class="ttw-btn ttw-btn-small">🔄 重置</button>
-                </div>
-            </div>
-            <div id="ttw-categories-list" class="ttw-categories-list"></div>
-        </div>
+        <div id="ttw-categories-list" class="ttw-categories-list"></div>
     </div>`;
 }
 
 function buildPromptConfigHtml() {
     return `
-    <div class="ttw-prompt-config ttw-mode-txt">
-        <div class="ttw-prompt-config-header">
+    <div class="ttw-section ttw-mode-txt" style="margin-bottom:12px;">
+        <div class="ttw-section-header">
             <span>📝 提示词配置</span>
             <div style="display:flex;gap:8px;">
                 <button id="ttw-export-settings" class="ttw-btn ttw-btn-small">📤 导出</button>
@@ -386,11 +374,13 @@ function buildPromptConfigHtml() {
                 <button id="ttw-preview-prompt" class="ttw-btn ttw-btn-small">👁️ 预览</button>
             </div>
         </div>
-        ${buildWorldbookPromptSectionHtml()}
-        ${buildPlotPromptSectionHtml()}
-        ${buildStylePromptSectionHtml()}
-        ${buildMessageChainSectionHtml()}
-        ${buildCategoriesSectionHtml()}
+        <div class="ttw-section-content ttw-prompt-config-content">
+            ${buildWorldbookPromptSectionHtml()}
+            ${buildCategoriesSectionHtml()}
+            ${buildPlotPromptSectionHtml()}
+            ${buildStylePromptSectionHtml()}
+            ${buildMessageChainSectionHtml()}
+        </div>
     </div>`;
 }
 

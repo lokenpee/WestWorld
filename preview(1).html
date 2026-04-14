@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WestWorld UI Preview</title>
+<style>
+  :root {
+    --bg-page: #0b0b0c;
+    --bg-panel: #131315;
+    --bg-card: #18181b;
+    --bg-hover: #1f1f23;
+    --bg-input: #0e0e10;
+    --border: #27272a;
+    --border-highlight: #3f3f46;
+    --text-primary: #f4f4f5;
+    --text-secondary: #c2c2c8;
+    --text-tertiary: #8e8e99;
+    --accent: #2563eb;
+    --accent-hover: #3b82f6;
+    --danger: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg-page);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  .ttw-modal-container {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; padding: 20px;
+  }
+  .ttw-modal {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.85);
+    width: min(980px, 96vw); max-height: 90vh;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .ttw-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; background: var(--bg-card); border-bottom: 1px solid var(--border);
+  }
+  .ttw-modal-title { font-weight: 600; font-size: 1.05em; }
+  .ttw-header-actions { display: flex; align-items: center; gap: 8px; }
+
+  .ttw-view-nav {
+    display: flex; gap: 6px; padding: 10px 14px 0;
+    background: var(--bg-card); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+  }
+  .ttw-view-tab {
+    background: transparent; border: 1px solid transparent; border-bottom: none;
+    color: var(--text-tertiary); padding: 8px 12px; border-radius: 8px 8px 0 0;
+    cursor: pointer; font-size: 13px; transition: all .15s ease;
+  }
+  .ttw-view-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+  .ttw-view-tab.active {
+    color: var(--text-primary); background: var(--bg-panel);
+    border-color: var(--border); font-weight: 600;
+  }
+
+  .ttw-modal-body {
+    flex: 1; overflow-y: auto; padding: 14px 16px 6px; scroll-behavior: smooth;
+  }
+  .ttw-modal-body::-webkit-scrollbar { width: 6px; }
+  .ttw-modal-body::-webkit-scrollbar-track { background: var(--bg-page); }
+  .ttw-modal-body::-webkit-scrollbar-thumb { background: var(--border-highlight); border-radius: 3px; }
+
+  .ttw-section { margin-bottom: 14px; }
+  .ttw-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    font-weight: 600; font-size: 14px; padding: 10px 12px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px 8px 0 0; border-bottom: none;
+  }
+  .ttw-section-content {
+    padding: 12px; background: var(--bg-panel);
+    border: 1px solid var(--border); border-radius: 0 0 8px 8px;
+  }
+
+  .ttw-upload-area {
+    border: 2px dashed var(--border-highlight); border-radius: 10px;
+    padding: 28px; text-align: center; cursor: pointer;
+    transition: all .2s ease; background: var(--bg-card);
+  }
+  .ttw-upload-area:hover, .ttw-upload-area.dragover {
+    border-color: var(--accent); background: var(--bg-hover);
+  }
+  .ttw-file-info { display: none; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; color: var(--text-secondary); }
+  .ttw-file-info.show { display: flex; }
+
+  .ttw-prompt-section {
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+    margin-bottom: 10px; background: var(--bg-panel);
+  }
+  .ttw-prompt-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; cursor: pointer; background: var(--bg-card); user-select: none;
+  }
+  .ttw-prompt-header:hover { background: var(--bg-hover); }
+  .ttw-prompt-content { display: none; padding: 12px; background: var(--bg-panel); }
+  .ttw-prompt-content.open { display: block; }
+  .ttw-collapse-icon { font-size: 12px; color: var(--text-tertiary); transition: transform .2s; }
+  .ttw-prompt-header.open .ttw-collapse-icon { transform: rotate(90deg); }
+
+  .ttw-input, .ttw-select, .ttw-textarea, .ttw-textarea-small {
+    width: 100%; padding: 8px 10px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg-input);
+    color: var(--text-primary); font-size: 13px; outline: none;
+  }
+  .ttw-input:focus, .ttw-select:focus, .ttw-textarea:focus { border-color: var(--accent); }
+  .ttw-textarea-small { min-height: 70px; resize: vertical; }
+  .ttw-setting-item { margin-bottom: 10px; }
+  .ttw-setting-item label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .ttw-setting-hint { font-size: 11px; color: var(--text-tertiary); line-height: 1.5; }
+
+  .ttw-checkbox-label {
+    display: flex; align-items: flex-start; gap: 8px; cursor: pointer;
+    padding: 8px; border-radius: 6px; background: var(--bg-card);
+    border: 1px solid var(--border); margin-bottom: 8px;
+  }
+  .ttw-checkbox-label:hover { background: var(--bg-hover); }
+  .ttw-checkbox-label input { margin-top: 2px; }
+
+  .ttw-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text-primary); cursor: pointer;
+    font-size: 13px; transition: all .15s ease;
+  }
+  .ttw-btn:hover { background: var(--bg-hover); border-color: var(--border-highlight); }
+  .ttw-btn-primary { background: var(--accent); border-color: transparent; font-weight: 600; }
+  .ttw-btn-primary:hover { background: var(--accent-hover); }
+  .ttw-btn-danger { color: var(--text-primary); border-color: rgba(220,38,38,0.5); background: rgba(220,38,38,0.12); }
+  .ttw-btn-danger:hover { background: rgba(220,38,38,0.2); }
+  .ttw-btn-small { padding: 5px 10px; font-size: 12px; }
+  .ttw-btn-tiny { padding: 3px 7px; font-size: 11px; }
+
+  .ttw-setting-card {
+    padding: 10px 12px; border-radius: 8px; margin-bottom: 10px;
+    background: var(--bg-card); border: 1px solid var(--border);
+  }
+
+  .ttw-memory-queue {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px;
+  }
+  .ttw-memory-item {
+    padding: 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg-card); cursor: pointer; font-size: 12px; transition: transform .1s;
+  }
+  .ttw-memory-item:hover { transform: translateY(-1px); background: var(--bg-hover); }
+  .ttw-memory-title { font-weight: 600; margin-bottom: 4px; }
+  .ttw-memory-meta { color: var(--text-tertiary); font-size: 11px; }
+  .ttw-memory-status-pending { border-left: 3px solid var(--text-tertiary); }
+  .ttw-memory-status-done { border-left: 3px solid var(--accent); }
+
+  .ttw-progress-bar { height: 10px; background: var(--bg-card); border-radius: 5px; overflow: hidden; margin-bottom: 8px; border: 1px solid var(--border); }
+  .ttw-progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 4px; transition: width .4s ease; }
+  .ttw-progress-text { font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; }
+  .ttw-progress-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .ttw-stream-container { display: none; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 10px; background: var(--bg-card); }
+  .ttw-stream-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--bg-hover); border-bottom: 1px solid var(--border); }
+  .ttw-stream-content { padding: 10px; font-size: 12px; color: var(--text-secondary); max-height: 180px; overflow-y: auto; white-space: pre-wrap; }
+
+  .ttw-result-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .ttw-story-panel { border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--bg-panel); margin-bottom: 12px; }
+  .ttw-story-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
+  .ttw-current-block { margin-bottom: 10px; }
+  .ttw-current-block-title { font-size: 12px; color: var(--text-tertiary); margin-bottom: 4px; }
+  .ttw-current-block-content { padding: 10px; background: var(--bg-card); border-radius: 6px; font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+  .ttw-beat-item { padding: 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; background: var(--bg-card); }
+  .ttw-beat-item.is-active { border-color: var(--accent); background: rgba(37,99,235,0.08); }
+  .ttw-beat-item-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ttw-beat-active { font-size: 11px; color: var(--accent-hover); font-weight: 700; }
+  .ttw-beat-line { font-size: 12px; color: var(--text-secondary); margin-bottom: 3px; }
+
+  .ttw-outline-item { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+  .ttw-outline-toggle { width: 100%; text-align: left; padding: 10px 12px; background: var(--bg-card); border: none; color: var(--text-primary); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .ttw-outline-toggle:hover { background: var(--bg-hover); }
+  .ttw-outline-body { display: none; padding: 12px; background: var(--bg-panel); }
+  .ttw-outline-body.open { display: block; }
+  .ttw-outline-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+  .ttw-outline-status-done { background: rgba(37,99,235,0.15); color: #93bbff; }
+  .ttw-outline-status-pending { background: rgba(255,255,255,0.08); color: var(--text-tertiary); }
+
+  .ttw-modal-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; background: var(--bg-card); }
+
+  .ttw-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 6px; background: rgba(255,255,255,0.08); color: var(--text-tertiary); }
+  .ttw-placeholder-hint { padding: 8px; background: var(--bg-card); border: 1px solid var(--border-highlight); border-radius: 6px; font-size: 12px; margin-bottom: 10px; }
+  .ttw-form-group { margin-bottom: 10px; }
+  .ttw-form-group label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .ttw-api-card { display: none; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); margin-top: 8px; }
+  .ttw-api-tab { background: var(--bg-card); border-color: var(--border); color: var(--text-tertiary); }
+  .ttw-api-tab.active { background: rgba(37,99,235,0.18); border-color: var(--accent); color: var(--text-primary); }
+  .ttw-volume-indicator { display: none; padding: 6px 10px; font-size: 12px; color: var(--text-secondary); background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; margin-top: 8px; }
+
+  .ttw-submodal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .ttw-submodal.open { display: flex; }
+  .ttw-submodal-box { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; width: min(860px, 96vw); max-height: 84vh; display: flex; flex-direction: column; }
+  .ttw-submodal-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); }
+  .ttw-submodal-body { padding: 14px; overflow-y: auto; flex: 1; }
+  .ttw-submodal-footer { padding: 12px 16px; border-top: 1px solid var(--border); background: var(--bg-card); }
+  .ttw-category-card { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; background: var(--bg-panel); }
+  .ttw-category-header { padding: 10px 12px; background: var(--bg-card); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .ttw-category-header:hover { background: var(--bg-hover); }
+  .ttw-category-content { display: none; padding: 10px; background: var(--bg-panel); }
+  .ttw-category-content.open { display: block; }
+  .ttw-entry-card { padding: 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; background: var(--bg-card); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="ttw-modal-container" id="mainModal">
+  <div class="ttw-modal">
+    <div class="ttw-modal-header">
+      <span class="ttw-modal-title">📚 TXT转世界书 <span style="font-size:12px;opacity:0.7;font-weight:normal;">v3.5.2-preview</span></span>
+      <div class="ttw-header-actions">
+        <button class="ttw-btn ttw-btn-small">⬆️ 更新</button>
+        <span style="cursor:pointer;opacity:0.8;" title="帮助">❓</span>
+        <button class="ttw-btn ttw-btn-small" onclick="alert('实际插件中这里是关闭按钮')">✕</button>
+      </div>
+    </div>
+
+    <div class="ttw-view-nav">
+      <button class="ttw-view-tab active" data-target="txt">📚 TXT转世界书</button>
+      <button class="ttw-view-tab" data-target="progress">⏳ 处理进度</button>
+      <button class="ttw-view-tab" data-target="outline">🧭 故事大纲</button>
+      <button class="ttw-view-tab" data-target="current">🎬 当前章节概览</button>
+      <button class="ttw-view-tab" data-target="settings">⚙️ 设置</button>
+    </div>
+
+    <div class="ttw-modal-body">
+
+      <!-- TXT Converter view -->
+      <div id="view-txt" class="ttw-view-content">
+        <div class="ttw-section">
+          <div class="ttw-section-header">
+            <span>📄 文件上传</span>
+            <div style="display:flex;gap:6px;">
+              <button class="ttw-btn ttw-btn-small">📥 合并世界书</button>
+              <button class="ttw-btn ttw-btn-small" onclick="alert('预览模式：实际会打开清洗重复段落浮窗')">🧹 清洗重复段落</button>
+              <button class="ttw-btn ttw-btn-small">📥 导入工程包</button>
+              <button class="ttw-btn ttw-btn-small">📤 导出工程包</button>
+            </div>
+          </div>
+          <div class="ttw-section-content">
+            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:10px;">💾 工程包会保存：章节队列、故事大纲、当前章节开场白状态、世界书与处理进度。</div>
+            <div class="ttw-upload-area" id="uploadArea">
+              <div style="font-size:40px;margin-bottom:8px;">📁</div>
+              <div style="font-size:14px;opacity:0.9;">点击或拖拽TXT文件到此处</div>
+            </div>
+            <div class="ttw-file-info" id="fileInfo">
+              <span id="fileName">demo.txt</span>
+              <span id="fileSize" style="color:var(--text-tertiary);">(1.2 MB)</span>
+              <button class="ttw-btn ttw-btn-small" id="clearFile">清除</button>
+            </div>
+            <div style="display:none;margin-top:8px;padding:6px 10px;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);align-items:center;gap:8px;" id="novelNameRow">
+              <span style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">📖 导出名称:</span>
+              <input type="text" class="ttw-input" placeholder="输入小说名（用于导出文件名）" style="flex:1;min-width:0;font-size:12px;padding:4px 8px;" />
+            </div>
+          </div>
+        </div>
+
+        <div class="ttw-prompt-section" style="margin-bottom:12px;">
+          <div class="ttw-prompt-header" data-target="defaultEntriesContent">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span>📚</span><span style="font-weight:500;">向世界书中添加默认条目</span>
+              <span class="ttw-badge">可选</span>
+            </div>
+            <span class="ttw-collapse-icon">▶</span>
+          </div>
+          <div class="ttw-prompt-content" id="defaultEntriesContent">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+              <div class="ttw-setting-hint">每次转换完成后自动添加的世界书条目</div>
+              <div style="display:flex;gap:6px;">
+                <button class="ttw-btn ttw-btn-primary ttw-btn-small">➕ 添加</button>
+                <button class="ttw-btn ttw-btn-small">🔄 立即应用</button>
+              </div>
+            </div>
+            <div style="padding:10px;background:var(--bg-card);border-radius:6px;color:var(--text-tertiary);font-size:12px;">暂无默认条目</div>
+          </div>
+        </div>
+
+        <div class="ttw-section" style="margin-bottom:12px;">
+          <div class="ttw-section-header">
+            <span>📝 提示词配置</span>
+            <div style="display:flex;gap:6px;">
+              <button class="ttw-btn ttw-btn-small">📤 导出</button>
+              <button class="ttw-btn ttw-btn-small">📥 导入</button>
+              <button class="ttw-btn ttw-btn-small">👁️ 预览</button>
+            </div>
+          </div>
+          <div class="ttw-section-content" style="padding:12px 12px 6px 22px;">
+
+        <div class="ttw-prompt-section">
+          <div class="ttw-prompt-header open" data-target="worldbookContent">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span>📚</span><span style="font-weight:500;">txt转世界书主要提示词</span>
+              <span class="ttw-badge" style="background:rgba(37,99,235,0.15);color:#93bbff;">必需</span>
+            </div>
+            <span class="ttw-collapse-icon">▶</span>
+          </div>
+          <div class="ttw-prompt-content open" id="worldbookContent">
+            <div class="ttw-setting-hint" style="margin-bottom:8px;">核心提示词。留空使用默认。</div>
+            <div class="ttw-placeholder-hint">
+              <span style="color:var(--text-secondary);font-weight:bold;">⚠️ 必须包含占位符：</span>
+              <code style="background:var(--bg-input);padding:2px 6px;border-radius:3px;color:var(--text-primary);font-family:monospace;">{DYNAMIC_JSON_TEMPLATE}</code>
+              <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">此占位符会被自动替换为根据启用分类生成的JSON模板</div>
+            </div>
+            <textarea class="ttw-textarea-small" placeholder="留空使用默认..."></textarea>
+            <div style="margin-top:8px;"><button class="ttw-btn ttw-btn-small">🔄 恢复默认</button></div>
+          </div>
+        </div>
+
+        <div style="padding:10px 12px;border-radius:8px;margin-bottom:10px;background:var(--bg-card);border:1px solid var(--border);">
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px;">🏷️ 提取分类</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <label class="ttw-checkbox-label" style="margin:0;"><input type="checkbox" checked> <span>👤 角色</span></label>
+            <label class="ttw-checkbox-label" style="margin:0;"><input type="checkbox" checked> <span>📍 地点</span></label>
+            <label class="ttw-checkbox-label" style="margin:0;"><input type="checkbox" checked> <span>🏛️ 组织</span></label>
+            <label class="ttw-checkbox-label" style="margin:0;"><input type="checkbox"> <span>⚔️ 道具</span></label>
+            <label class="ttw-checkbox-label" style="margin:0;"><input type="checkbox"> <span>📜 章节剧情</span></label>
+          </div>
+        </div>
+
+        <div class="ttw-prompt-section">
+          <div class="ttw-prompt-header" data-target="plotContent">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                <input type="checkbox" id="enablePlot">
+                <span>📖</span><span style="font-weight:500;">剧情大纲</span>
+              </label>
+              <span class="ttw-badge">可选</span>
+            </div>
+            <span class="ttw-collapse-icon">▶</span>
+          </div>
+          <div class="ttw-prompt-content" id="plotContent">
+            <textarea class="ttw-textarea-small" placeholder="留空使用默认..."></textarea>
+            <div style="margin-top:8px;display:flex;gap:8px;">
+              <button class="ttw-btn ttw-btn-small">🔄 恢复默认</button>
+              <button class="ttw-btn ttw-btn-small">⚙️ 导出时的默认配置</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ttw-prompt-section">
+          <div class="ttw-prompt-header" data-target="styleContent">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                <input type="checkbox" id="enableStyle">
+                <span>🎨</span><span style="font-weight:500;">文风配置</span>
+              </label>
+              <span class="ttw-badge">可选</span>
+            </div>
+            <span class="ttw-collapse-icon">▶</span>
+          </div>
+          <div class="ttw-prompt-content" id="styleContent">
+            <textarea class="ttw-textarea-small" placeholder="留空使用默认..."></textarea>
+            <div style="margin-top:8px;"><button class="ttw-btn ttw-btn-small">🔄 恢复默认</button></div>
+          </div>
+        </div>
+
+        <div class="ttw-prompt-section">
+          <div class="ttw-prompt-header" data-target="chainContent">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span>💬</span><span style="font-weight:500;color:var(--text-secondary);">消息链配置</span>
+              <span class="ttw-badge">可选</span>
+            </div>
+            <span class="ttw-collapse-icon">▶</span>
+          </div>
+          <div class="ttw-prompt-content" id="chainContent">
+            <div style="margin-bottom:12px;padding:10px;background:var(--bg-card);border-radius:6px;">
+              <label style="font-size:12px;color:var(--text-secondary);font-weight:bold;">📌 后缀提示词（追加到提示词末尾，在消息链转换之前生效）</label>
+              <textarea class="ttw-textarea-small" style="margin-top:6px;" placeholder="例如：请特别注意提取XX信息，修复乱码内容..."></textarea>
+            </div>
+            <div style="border-top:1px solid var(--border);padding-top:12px;">
+              <div class="ttw-setting-hint" style="margin-bottom:8px;">
+                💬 配置发送给AI的消息链（类似对话补全预设）。每条消息可指定角色。<br>
+                <code style="background:var(--bg-input);padding:2px 6px;border-radius:3px;font-size:11px;">{PROMPT}</code> 占位符会被替换为实际组装好的提示词内容。
+              </div>
+              <div id="chainList" style="margin-bottom:8px;">
+                <div style="padding:8px;background:var(--bg-card);border-radius:6px;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:12px;color:var(--text-secondary);">🔷 system</span>
+                  <span style="font-size:12px;color:var(--text-tertiary);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">请根据以下提示提取世界书条目... {PROMPT}</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="ttw-btn ttw-btn-small" style="background:var(--bg-hover);">➕ 添加消息</button>
+                <button class="ttw-btn ttw-btn-small">🔄 恢复默认</button>
+              </div>
+            </div>
+          </div>
+        </div>
+          </div>
+        </div>
+
+        <div class="ttw-section" id="queueSection" style="display:none;">
+          <div class="ttw-section-header">
+            <span>📋 章节队列</span>
+            <div style="display:flex;gap:6px;">
+              <button class="ttw-btn ttw-btn-small">📊 已处理</button>
+              <button class="ttw-btn ttw-btn-small">📍 选择起始</button>
+              <button class="ttw-btn ttw-btn-small ttw-btn-danger">🗑️ 多选删除</button>
+            </div>
+          </div>
+          <div class="ttw-section-content">
+            <div class="ttw-setting-hint" style="margin-bottom:8px;">💡 点击章节可<strong>查看/编辑/复制</strong>，支持<strong>🎲重Roll</strong></div>
+            <div class="ttw-memory-queue">
+              <div class="ttw-memory-item ttw-memory-status-pending"><div class="ttw-memory-title">第1章</div><div class="ttw-memory-meta">12,345字 · 等待</div></div>
+              <div class="ttw-memory-item ttw-memory-status-done"><div class="ttw-memory-title">第2章</div><div class="ttw-memory-meta">10,200字 · 完成</div></div>
+              <div class="ttw-memory-item ttw-memory-status-pending"><div class="ttw-memory-title">第3章</div><div class="ttw-memory-meta">11,800字 · 等待</div></div>
+              <div class="ttw-memory-item ttw-memory-status-pending"><div class="ttw-memory-title">第4章</div><div class="ttw-memory-meta">9,600字 · 等待</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ttw-section" id="resultSection" style="display:none;">
+          <div class="ttw-section-header"><span>📊 生成结果</span></div>
+          <div class="ttw-section-content">
+            <div class="ttw-result-actions">
+              <button class="ttw-btn">🔍 查找</button>
+              <button class="ttw-btn">🔄 替换</button>
+              <button class="ttw-btn" onclick="document.getElementById('worldbookModal').classList.add('open')">📖 查看世界书</button>
+              <button class="ttw-btn">📜 修改历史</button>
+              <button class="ttw-btn">🧹 整理条目</button>
+              <button class="ttw-btn">🏷️ 清除标签</button>
+              <button class="ttw-btn">🔗 别名合并</button>
+              <button class="ttw-btn ttw-btn-primary">🃏 导出角色卡</button>
+              <button class="ttw-btn ttw-btn-primary">📥 导出世界书</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress view -->
+      <div id="view-progress" class="ttw-view-content hidden">
+        <div class="ttw-section">
+          <div class="ttw-section-header"><span>⏳ 处理进度</span></div>
+          <div class="ttw-section-content">
+            <div class="ttw-progress-bar"><div class="ttw-progress-fill" id="progressFill" style="width:35%"></div></div>
+            <div class="ttw-progress-text" id="progressText">正在处理第2章 / 共10章...</div>
+            <div class="ttw-progress-controls">
+              <button class="ttw-btn" id="pauseBtn">⏸️ 暂停</button>
+              <button class="ttw-btn ttw-btn-danger" id="repairBtn">🔧 修复失败</button>
+              <button class="ttw-btn ttw-btn-small" id="toggleStream">👁️ 实时输出</button>
+            </div>
+            <div class="ttw-stream-container" id="streamContainer">
+              <div class="ttw-stream-header">
+                <span>📤 实时输出</span>
+                <div style="display:flex;gap:6px;">
+                  <button class="ttw-btn ttw-btn-small hidden" id="copyStream">📋 复制全部</button>
+                  <button class="ttw-btn ttw-btn-small" id="clearStream">清空</button>
+                </div>
+              </div>
+              <div class="ttw-stream-content" id="streamContent">ℹ️ 开始处理...
+🚀 第1章已完成
+🚀 第2章处理中...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Outline view -->
+      <div id="view-outline" class="ttw-view-content hidden">
+        <div class="ttw-section">
+          <div class="ttw-section-header">
+            <span>🧭 故事大纲</span>
+            <button class="ttw-btn ttw-btn-small ttw-btn-primary">▶ 从第一章开始</button>
+          </div>
+          <div class="ttw-section-content">
+            <div class="ttw-outline-item">
+              <button class="ttw-outline-toggle" data-target="outlineBody0">
+                <span class="ttw-outline-title">第1章 · 初入江湖</span>
+                <span class="ttw-outline-status ttw-outline-status-done">已生成</span>
+              </button>
+              <div class="ttw-outline-body" id="outlineBody0">
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">主角下山，遇到第一批江湖人士，得知十年前的秘案线索。</div>
+                <button class="ttw-btn ttw-btn-small">🔄 重roll本章</button>
+                <button class="ttw-btn ttw-btn-small">📖 查看当前章节概览</button>
+              </div>
+            </div>
+            <div class="ttw-outline-item">
+              <button class="ttw-outline-toggle" data-target="outlineBody1">
+                <span class="ttw-outline-title">第2章 · 风雨客栈</span>
+                <span class="ttw-outline-status ttw-outline-status-pending">待生成</span>
+              </button>
+              <div class="ttw-outline-body" id="outlineBody1">
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">该章尚未生成大纲。</div>
+                <button class="ttw-btn ttw-btn-small">🔄 重roll本章</button>
+                <button class="ttw-btn ttw-btn-small">📖 查看当前章节概览</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Current chapter view -->
+      <div id="view-current" class="ttw-view-content hidden">
+        <div class="ttw-story-panel">
+          <div class="ttw-story-panel-header">
+            <h4 style="margin:0;">当前章节概览</h4>
+            <div style="display:flex;gap:6px;">
+              <button class="ttw-btn ttw-btn-small">✏️ 编辑章节概览</button>
+              <button class="ttw-btn ttw-btn-small ttw-btn-primary">⏭ 下一章</button>
+            </div>
+          </div>
+          <div class="ttw-current-block">
+            <div class="ttw-current-block-title">故事摘要</div>
+            <div class="ttw-current-block-content">主角下山，遇到第一批江湖人士，得知十年前的秘案线索。</div>
+          </div>
+          <div class="ttw-current-block">
+            <div class="ttw-current-block-title">当前小章剧本</div>
+            <div class="ttw-current-block-content">
+              <div class="ttw-beat-item is-active">
+                <div class="ttw-beat-item-head"><span class="ttw-beat-id">b1</span><span class="ttw-beat-active">当前阶段</span></div>
+                <div class="ttw-beat-line">📖 事件摘要：主角在客栈听到江湖传闻</div>
+                <div class="ttw-beat-line">🚪 入场事件：从山下小路自然走入客栈大堂</div>
+                <div class="ttw-beat-line">🎯 退出条件：获得关键人物的名字或位置</div>
+              </div>
+              <div class="ttw-beat-item">
+                <div class="ttw-beat-item-head"><span class="ttw-beat-id">b2</span></div>
+                <div class="ttw-beat-line">📖 事件摘要：与神秘黑衣人发生短暂交锋</div>
+                <div class="ttw-beat-line">🚪 入场事件：听闻传闻后主动打探</div>
+                <div class="ttw-beat-line">🎯 退出条件：交锋结束并留下悬念</div>
+              </div>
+            </div>
+          </div>
+          <div class="ttw-current-block">
+            <div class="ttw-current-block-title">本章开场白</div>
+            <div class="ttw-current-block-content">你一路风尘仆仆，终于在黄昏时分抵达了山脚下的风雨客栈。大堂里人声嘈杂，几桌江湖打扮的客人正压低声音说着什么。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings view -->
+      <div id="view-settings" class="ttw-view-content hidden">
+        <div class="ttw-section">
+          <div class="ttw-section-header"><span>⚙️ 设置</span></div>
+          <div class="ttw-section-content">
+            <div class="ttw-setting-card">
+              <label class="ttw-checkbox-label" style="margin:0;background:transparent;border:none;padding:0;">
+                <input type="checkbox" id="useTavernApi" checked>
+                <div>
+                  <span style="font-weight:bold;">🍺 使用酒馆API</span>
+                  <div class="ttw-setting-hint">勾选后使用酒馆当前连接的AI，不勾选则使用下方自定义API</div>
+                </div>
+              </label>
+            </div>
+
+            <div id="customApiSection" style="display:none;margin-bottom:16px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);">
+              <div style="font-weight:bold;color:var(--text-primary);margin-bottom:10px;">🔧 AI路由配置</div>
+              <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <button class="ttw-btn ttw-btn-small ttw-api-tab active" data-api="main">主AI</button>
+                <button class="ttw-btn ttw-btn-small ttw-api-tab" data-api="director">导演AI</button>
+              </div>
+              <div class="ttw-checkbox-label" style="margin:0 0 6px 0;padding:0;background:transparent;border:none;"><input type="checkbox" checked> <span>启用导演裁判（每回合运行）</span></div>
+              <div class="ttw-checkbox-label" style="margin:0 0 6px 0;padding:0;background:transparent;border:none;"><input type="checkbox" checked> <span>导演API失败时启用本地导演兜底判定</span></div>
+              <div class="ttw-checkbox-label" style="margin:0 0 10px 0;padding:0;background:transparent;border:none;"><input type="checkbox" checked> <span>每回合运行导演判定</span></div>
+              <div class="ttw-api-card" id="apiCardMain" style="display:block;">
+                <div style="font-weight:bold;color:var(--text-secondary);margin-bottom:8px;">🧠 主AI配置</div>
+                <div class="ttw-setting-item"><label>API提供商</label><select class="ttw-select"><option>OpenAI兼容</option><option>Gemini</option><option>Anthropic</option></select></div>
+                <div class="ttw-setting-item"><label>API Key</label><input type="password" class="ttw-input" placeholder="输入API Key"></div>
+                <div class="ttw-setting-item"><label>模型</label><input type="text" class="ttw-input" value="gemini-2.5-flash"></div>
+                <div class="ttw-setting-item"><label>Max Tokens</label><input type="number" class="ttw-input" value="2048"></div>
+              </div>
+              <div class="ttw-api-card" id="apiCardDirector">
+                <div style="font-weight:bold;color:var(--text-secondary);margin-bottom:8px;">🎬 导演AI配置</div>
+                <div class="ttw-setting-item"><label>API提供商</label><select class="ttw-select"><option>OpenAI兼容</option><option>Gemini</option><option>Anthropic</option></select></div>
+                <div class="ttw-setting-item"><label>API Key</label><input type="password" class="ttw-input" placeholder="输入API Key"></div>
+                <div class="ttw-setting-item"><label>模型</label><input type="text" class="ttw-input" value="gemini-2.5-flash"></div>
+                <div class="ttw-setting-item"><label>Max Tokens</label><input type="number" class="ttw-input" value="2048"></div>
+              </div>
+            </div>
+
+            <div class="ttw-setting-card">
+              <div style="font-weight:bold;color:var(--text-primary);margin-bottom:8px;">🚀 并行处理</div>
+              <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                <label class="ttw-checkbox-label" style="margin:0;background:transparent;border:none;padding:0;"><input type="checkbox" checked> <span>启用</span></label>
+                <label style="font-size:12px;display:flex;align-items:center;gap:6px;">章节并发 <input type="number" class="ttw-input" value="1" style="width:60px;padding:4px 8px;"></label>
+                <label style="font-size:12px;display:flex;align-items:center;gap:6px;">主API并发 <input type="number" class="ttw-input" value="1" style="width:60px;padding:4px 8px;"></label>
+                <label style="font-size:12px;display:flex;align-items:center;gap:6px;">导演API并发 <input type="number" class="ttw-input" value="1" style="width:60px;padding:4px 8px;"></label>
+              </div>
+              <div style="margin-top:10px;">
+                <select class="ttw-select"><option>🚀 独立模式 - 最快，每章独立提取后合并</option><option>📦 分批模式 - 批次间累积上下文，更连贯</option></select>
+              </div>
+              <div style="margin-top:10px;">
+                <select class="ttw-select"><option>🧩 一致性优先 - 主+导演都完成后再标记章节完成</option><option>⚡ 吞吐优先 - 主API先落地，导演异步后补</option></select>
+              </div>
+            </div>
+
+            <div class="ttw-setting-card">
+              <div style="font-weight:bold;color:var(--text-primary);margin-bottom:8px;">📖 章回正则设置</div>
+              <div class="ttw-setting-hint" style="margin-bottom:8px;">自定义章节检测正则表达式</div>
+              <input type="text" class="ttw-input" value="^[\\s\\u3000\\uFEFF]*第\\s*[零一二三四五六七八九十百千万0-9]+\\s*[章回卷节部篇][^\\n\\r]{0,80}" style="margin-bottom:8px;">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="ttw-btn ttw-btn-small">中文通用</button>
+                <button class="ttw-btn ttw-btn-small">英文Chapter</button>
+                <button class="ttw-btn ttw-btn-small">数字章节</button>
+                <button class="ttw-btn ttw-btn-small ttw-btn-primary">🔍 检测</button>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:12px;margin-bottom:12px;align-items:flex-end;">
+              <div style="flex:1;"><label class="ttw-setting-hint">每块字数</label><input type="number" class="ttw-input" value="8000"></div>
+              <div style="flex:1;"><label class="ttw-setting-hint">API超时(秒)</label><input type="number" class="ttw-input" value="120"></div>
+              <div><button class="ttw-btn ttw-btn-small" style="background:var(--bg-hover);">🔄 重新分块</button></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
+              <label class="ttw-checkbox-label"><input type="checkbox" checked> <div><span>📝 增量输出模式</span><div class="ttw-setting-hint">只输出变更的条目，减少重复内容</div></div></label>
+              <label class="ttw-checkbox-label"><input type="checkbox" id="volumeMode"> <div><span>📦 分卷模式</span><div class="ttw-setting-hint">上下文超限时自动分卷，避免记忆分裂</div></div></label>
+              <label class="ttw-checkbox-label"><input type="checkbox" checked> <div><span>📌 强制记忆为章节</span><div class="ttw-setting-hint">开启后会在提示词中强制AI将每个记忆块视为对应章节</div></div></label>
+              <label class="ttw-checkbox-label"><input type="checkbox"> <div><span>🔄 允许条目递归</span><div class="ttw-setting-hint">勾选后条目可被其他条目激活，并可触发进一步递归</div></div></label>
+            </div>
+
+            <div style="padding:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;margin-bottom:10px;">
+              <div style="font-weight:bold;color:var(--text-primary);margin-bottom:6px;font-size:12px;">🧹 响应过滤标签</div>
+              <div class="ttw-setting-hint" style="margin-bottom:8px;">用逗号分隔。<code>thinking</code>=移除标签内容；<code>/think</code>=移除开头到&lt;/think&gt;的内容</div>
+              <input type="text" class="ttw-input" value="thinking,/think" style="font-size:12px;">
+            </div>
+
+            <div>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">
+                <input type="checkbox" id="debugMode"> <span>🔍 调试模式</span>
+                <span style="color:var(--text-tertiary);font-size:11px;">（在实时输出中打印每步操作和耗时）</span>
+              </label>
+            </div>
+            <div id="volumeIndicator" class="ttw-volume-indicator">当前: 第1卷 | 已完成: 0卷</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="ttw-modal-footer">
+      <button class="ttw-btn" onclick="alert('预览模式：无实际功能')">🧹 清洗重复段落</button>
+      <button class="ttw-btn ttw-btn-primary" id="startBtn" disabled>🚀 开始转换</button>
+    </div>
+  </div>
+</div>
+
+<!-- Worldbook view mock modal -->
+<div class="ttw-submodal" id="worldbookModal">
+  <div class="ttw-submodal-box">
+    <div class="ttw-submodal-header">
+      <span style="font-weight:600;">📖 世界书详细视图</span>
+      <button class="ttw-btn ttw-btn-small" onclick="document.getElementById('worldbookModal').classList.remove('open')">✕</button>
+    </div>
+    <div class="ttw-submodal-body">
+      <div style="padding:8px;background:var(--bg-card);border-radius:6px;margin-bottom:10px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:12px;color:var(--text-tertiary);">🔍 Token阈值:</span>
+        <input type="number" class="ttw-input" value="0" style="width:80px;padding:4px 8px;">
+        <button class="ttw-btn ttw-btn-small">应用</button>
+        <span style="font-size:11px;color:var(--text-tertiary);">低于此值的条目将红色高亮（0=关闭）</span>
+      </div>
+
+      <div class="ttw-category-card">
+        <div class="ttw-category-header" data-target="cat0">
+          <span>👤 角色 <span style="font-size:11px;color:var(--text-tertiary);">(3条 | 1,240 tokens)</span></span>
+          <span style="color:var(--text-tertiary);">▶</span>
+        </div>
+        <div class="ttw-category-content open" id="cat0">
+          <div class="ttw-entry-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-weight:600;">林平之</span>
+              <div style="display:flex;gap:6px;">
+                <button class="ttw-btn ttw-btn-small">常驻</button>
+                <button class="ttw-btn ttw-btn-small">⚙️</button>
+                <button class="ttw-btn ttw-btn-small">🎯</button>
+                <button class="ttw-btn ttw-btn-small ttw-btn-danger">🗑️</button>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">关键词: 林平之, 小林子, 林少镖头</div>
+            <div style="font-size:12px;line-height:1.5;color:var(--text-secondary);">福威镖局少镖头，性格隐忍，后期为复仇自宫练剑。</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">Token: 420</div>
+          </div>
+          <div class="ttw-entry-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-weight:600;">岳灵珊</span>
+              <div style="display:flex;gap:6px;">
+                <button class="ttw-btn ttw-btn-small">触发</button>
+                <button class="ttw-btn ttw-btn-small">⚙️</button>
+                <button class="ttw-btn ttw-btn-small">🎯</button>
+                <button class="ttw-btn ttw-btn-small ttw-btn-danger">🗑️</button>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">关键词: 岳灵珊, 小师妹, 华山派大小姐</div>
+            <div style="font-size:12px;line-height:1.5;color:var(--text-secondary);">华山派掌门岳不群之女，天真烂漫，后与林平之成婚。</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">Token: 380</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ttw-category-card">
+        <div class="ttw-category-header" data-target="cat1">
+          <span>📍 地点 <span style="font-size:11px;color:var(--text-tertiary);">(2条 | 560 tokens)</span></span>
+          <span style="color:var(--text-tertiary);">▶</span>
+        </div>
+        <div class="ttw-category-content" id="cat1">
+          <div class="ttw-entry-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-weight:600;">华山</span>
+              <div style="display:flex;gap:6px;">
+                <button class="ttw-btn ttw-btn-small">常驻</button>
+                <button class="ttw-btn ttw-btn-small">⚙️</button>
+                <button class="ttw-btn ttw-btn-small">🎯</button>
+                <button class="ttw-btn ttw-btn-small ttw-btn-danger">🗑️</button>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-tertiary);">关键词: 华山, 华山派, 思过崖</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ttw-submodal-footer">
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="ttw-btn ttw-btn-small">🧺 多选删除</button>
+        <button class="ttw-btn ttw-btn-small">✋ 手动合并</button>
+        <button class="ttw-btn ttw-btn-small">🎲 批量重Roll</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.ttw-view-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.ttw-view-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const target = tab.dataset.target;
+      document.querySelectorAll('.ttw-view-content').forEach(v => v.classList.add('hidden'));
+      document.getElementById('view-' + target).classList.remove('hidden');
+    });
+  });
+
+  document.querySelectorAll('.ttw-prompt-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const id = header.dataset.target;
+      const content = document.getElementById(id);
+      header.classList.toggle('open');
+      content.classList.toggle('open');
+    });
+  });
+
+  document.querySelectorAll('.ttw-outline-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.target;
+      document.getElementById(id).classList.toggle('open');
+    });
+  });
+
+  document.querySelectorAll('.ttw-category-header').forEach(h => {
+    h.addEventListener('click', () => {
+      const id = h.dataset.target;
+      document.getElementById(id).classList.toggle('open');
+    });
+  });
+
+  const useTavern = document.getElementById('useTavernApi');
+  const customApi = document.getElementById('customApiSection');
+  useTavern.addEventListener('change', () => {
+    customApi.style.display = useTavern.checked ? 'none' : 'block';
+  });
+
+  document.querySelectorAll('.ttw-api-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.ttw-api-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('apiCardMain').style.display = tab.dataset.api === 'main' ? 'block' : 'none';
+      document.getElementById('apiCardDirector').style.display = tab.dataset.api === 'director' ? 'block' : 'none';
+    });
+  });
+
+  const volumeMode = document.getElementById('volumeMode');
+  const volumeIndicator = document.getElementById('volumeIndicator');
+  volumeMode.addEventListener('change', () => {
+    volumeIndicator.style.display = volumeMode.checked ? 'block' : 'none';
+  });
+
+  const debugMode = document.getElementById('debugMode');
+  const copyStream = document.getElementById('copyStream');
+  debugMode.addEventListener('change', () => {
+    copyStream.classList.toggle('hidden', !debugMode.checked);
+  });
+
+  const toggleStream = document.getElementById('toggleStream');
+  const streamContainer = document.getElementById('streamContainer');
+  toggleStream.addEventListener('click', () => {
+    streamContainer.style.display = streamContainer.style.display === 'block' ? 'none' : 'block';
+  });
+  document.getElementById('clearStream').addEventListener('click', () => {
+    document.getElementById('streamContent').textContent = '';
+  });
+
+  const uploadArea = document.getElementById('uploadArea');
+  const fileInfo = document.getElementById('fileInfo');
+  const novelNameRow = document.getElementById('novelNameRow');
+  const startBtn = document.getElementById('startBtn');
+
+  uploadArea.addEventListener('click', () => {
+    uploadArea.style.display = 'none';
+    fileInfo.classList.add('show');
+    novelNameRow.style.display = 'flex';
+    document.getElementById('queueSection').style.display = 'block';
+    startBtn.disabled = false;
+    startBtn.textContent = '🚀 开始转换';
+  });
+  uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+  uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+  uploadArea.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    uploadArea.click();
+  });
+  document.getElementById('clearFile').addEventListener('click', (e) => {
+    e.stopPropagation();
+    uploadArea.style.display = 'block';
+    fileInfo.classList.remove('show');
+    novelNameRow.style.display = 'none';
+    document.getElementById('queueSection').style.display = 'none';
+    document.getElementById('resultSection').style.display = 'none';
+    startBtn.disabled = true;
+  });
+
+  startBtn.addEventListener('click', () => {
+    document.querySelectorAll('.ttw-view-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.ttw-view-tab[data-target="progress"]').classList.add('active');
+    document.querySelectorAll('.ttw-view-content').forEach(v => v.classList.add('hidden'));
+    document.getElementById('view-progress').classList.remove('hidden');
+
+    let width = 0;
+    const fill = document.getElementById('progressFill');
+    const text = document.getElementById('progressText');
+    const interval = setInterval(() => {
+      width += 5;
+      fill.style.width = width + '%';
+      text.textContent = '正在处理第' + Math.min(Math.ceil(width/10), 10) + '章 / 共10章...';
+      if (width >= 100) {
+        clearInterval(interval);
+        text.textContent = '✅ 全部完成';
+        document.getElementById('resultSection').style.display = 'block';
+        document.querySelectorAll('.ttw-view-tab').forEach(t => t.classList.remove('active'));
+        document.querySelector('.ttw-view-tab[data-target="txt"]').classList.add('active');
+        document.querySelectorAll('.ttw-view-content').forEach(v => v.classList.add('hidden'));
+        document.getElementById('view-txt').classList.remove('hidden');
+      }
+    }, 120);
+  });
+</script>
+</body>
+</html>

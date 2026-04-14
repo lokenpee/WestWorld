@@ -10,19 +10,21 @@ export function ensureModalStyles() {
         
         /* --- CSS 变量定义 --- */
         :root {
-            --ttw-bg-darker: #121212;
-            --ttw-bg-dark: #1e1e1e;
-            --ttw-bg-medium: #2c2c2e;
-            --ttw-bg-light: #3a3a3c;
-            --ttw-border-color: #38383a;
-            --ttw-text-primary: rgba(255, 255, 255, 0.9);
-            --ttw-text-secondary: rgba(255, 255, 255, 0.65);
-            --ttw-text-muted: rgba(255, 255, 255, 0.45);
-            --ttw-accent-blue: #0a84ff;
-            --ttw-accent-blue-hover: #3399ff;
+            --ttw-bg-darker: #0b0b0c;
+            --ttw-bg-dark: #131315;
+            --ttw-bg-medium: #18181b;
+            --ttw-bg-light: #1f1f23;
+            --ttw-bg-input: #0e0e10;
+            --ttw-border-color: #27272a;
+            --ttw-border-highlight: #3f3f46;
+            --ttw-text-primary: #f4f4f5;
+            --ttw-text-secondary: #c2c2c8;
+            --ttw-text-muted: #8e8e99;
+            --ttw-accent-blue: #2563eb;
+            --ttw-accent-blue-hover: #3b82f6;
             --ttw-accent-green: #30d158;
             --ttw-accent-orange: #ff9f0a;
-            --ttw-accent-red: #ff453a;
+            --ttw-accent-red: #dc2626;
             --ttw-accent-purple: #bf5af2;
         }
         
@@ -33,27 +35,26 @@ export function ensureModalStyles() {
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.75);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 99999;
             padding: 20px;
             box-sizing: border-box;
-            backdrop-filter: blur(4px);
         }
         
         /* --- 模态框主体 --- */
         .ttw-modal {
-            background: linear-gradient(180deg, var(--ttw-bg-dark) 0%, var(--ttw-bg-darker) 100%);
+            background: var(--ttw-bg-dark);
             border: 1px solid var(--ttw-border-color);
-            border-radius: 16px;
+            border-radius: 12px;
             width: 100%;
-            max-width: 800px;
-            max-height: calc(100vh - 40px);
+            max-width: 980px;
+            max-height: 90vh;
             display: flex;
             flex-direction: column;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85);
             overflow: hidden;
         }
         
@@ -62,29 +63,23 @@ export function ensureModalStyles() {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 18px 24px;
+            padding: 14px 18px;
             border-bottom: 1px solid var(--ttw-border-color);
-            background: var(--ttw-bg-dark);
+            background: var(--ttw-bg-medium);
         }
         
         .ttw-modal-title {
             font-weight: 600;
-            font-size: 16px;
+            font-size: 1.05em;
             color: var(--ttw-text-primary);
             display: flex;
             align-items: center;
-            gap: 10px;
-        }
-        
-        .ttw-modal-title::before {
-            content: '✨';
-            font-size: 18px;
         }
         
         .ttw-header-actions {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
         }
         
         .ttw-help-btn {
@@ -94,36 +89,37 @@ export function ensureModalStyles() {
             width: 32px;
             height: 32px;
             border-radius: 8px;
-            background: rgba(10, 132, 255, 0.15);
-            color: var(--ttw-accent-blue);
+            background: transparent;
+            color: var(--ttw-text-secondary);
             font-size: 14px;
             cursor: pointer;
-            transition: all 0.25s ease;
-            border: 1px solid rgba(10, 132, 255, 0.3);
+            transition: all 0.15s ease;
+            border: 1px solid transparent;
         }
         
         .ttw-help-btn:hover {
-            background: rgba(10, 132, 255, 0.3);
-            transform: scale(1.05);
+            background: var(--ttw-bg-light);
+            border-color: var(--ttw-border-color);
+            color: var(--ttw-text-primary);
         }
         
         .ttw-modal-close {
-            background: rgba(255, 255, 255, 0.08);
-            border: none;
+            background: transparent;
+            border: 1px solid var(--ttw-border-color);
             color: var(--ttw-text-secondary);
             font-size: 18px;
             width: 32px;
             height: 32px;
             border-radius: 8px;
             cursor: pointer;
-            transition: all 0.25s ease;
+            transition: all 0.15s ease;
             display: flex;
             align-items: center;
             justify-content: center;
         }
         
         .ttw-modal-close:hover {
-            background: rgba(255, 69, 58, 0.2);
+            background: rgba(220, 38, 38, 0.2);
             color: var(--ttw-accent-red);
         }
         
@@ -131,59 +127,61 @@ export function ensureModalStyles() {
         .ttw-modal-body {
             flex: 1;
             overflow-y: auto;
-            padding: 20px 24px;
+            padding: 14px 16px 6px;
         }
 
         .ttw-view-nav {
             display: flex;
-            gap: 8px;
-            margin-bottom: 16px;
-            padding: 8px;
+            gap: 6px;
+            margin-bottom: 14px;
+            padding: 10px 14px 0;
             border: 1px solid var(--ttw-border-color);
-            border-radius: 10px;
-            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px 8px 0 0;
+            background: var(--ttw-bg-medium);
+            border-bottom: 0;
+            flex-wrap: wrap;
         }
 
         .ttw-view-tab {
-            flex: 1;
-            border: 1px solid var(--ttw-border-color);
-            background: rgba(255, 255, 255, 0.06);
-            color: var(--ttw-text-secondary);
-            border-radius: 8px;
-            padding: 10px 12px;
+            border: 1px solid transparent;
+            border-bottom: none;
+            background: transparent;
+            color: var(--ttw-text-muted);
+            border-radius: 8px 8px 0 0;
+            padding: 8px 12px;
             cursor: pointer;
             font-size: 13px;
-            font-weight: 600;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
         }
 
         .ttw-view-tab:hover {
-            background: rgba(255, 255, 255, 0.12);
+            background: var(--ttw-bg-light);
             color: var(--ttw-text-primary);
         }
 
         .ttw-view-tab.active {
-            background: linear-gradient(135deg, var(--ttw-accent-blue), #0077ed);
-            border-color: var(--ttw-accent-blue);
-            color: #fff;
-            box-shadow: 0 4px 10px rgba(10, 132, 255, 0.28);
+            background: var(--ttw-bg-dark);
+            border-color: var(--ttw-border-color);
+            color: var(--ttw-text-primary);
+            font-weight: 600;
+            box-shadow: none;
         }
         
         .ttw-modal-footer {
-            padding: 16px 24px;
+            padding: 12px 16px;
             border-top: 1px solid var(--ttw-border-color);
-            background: var(--ttw-bg-dark);
+            background: var(--ttw-bg-medium);
             display: flex;
             justify-content: flex-end;
-            gap: 12px;
+            gap: 10px;
         }
         
         /* --- 卡片式区块 --- */
         .ttw-section {
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+            background: transparent;
             border: 1px solid var(--ttw-border-color);
-            border-radius: 12px;
-            margin-bottom: 16px;
+            border-radius: 8px;
+            margin-bottom: 14px;
             overflow: hidden;
         }
         
@@ -191,9 +189,8 @@ export function ensureModalStyles() {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 14px 18px;
-            background: rgba(0, 0, 0, 0.2);
-            cursor: pointer;
+            padding: 10px 12px;
+            background: var(--ttw-bg-medium);
             font-weight: 600;
             font-size: 14px;
             color: var(--ttw-text-primary);
@@ -201,11 +198,12 @@ export function ensureModalStyles() {
         }
         
         .ttw-section-header:hover {
-            background: rgba(0, 0, 0, 0.3);
+            background: var(--ttw-bg-light);
         }
         
         .ttw-section-content {
-            padding: 18px;
+            padding: 12px;
+            background: var(--ttw-bg-dark);
         }
         
         .ttw-collapse-icon {
@@ -224,18 +222,18 @@ export function ensureModalStyles() {
         
         /* --- 表单元素 --- */
         .ttw-input, .ttw-select, .ttw-textarea, .ttw-textarea-small, .ttw-input-small {
-            background: rgba(0, 0, 0, 0.3);
+            background: var(--ttw-bg-input);
             border: 1px solid var(--ttw-border-color);
-            border-radius: 8px;
+            border-radius: 6px;
             color: var(--ttw-text-primary);
-            font-size: 14px;
+            font-size: 13px;
             box-sizing: border-box;
             transition: all 0.2s ease;
         }
         
         .ttw-input {
             width: 100%;
-            padding: 12px 14px;
+            padding: 8px 10px;
         }
         
         .ttw-input-small {
@@ -246,7 +244,7 @@ export function ensureModalStyles() {
         
         .ttw-select {
             width: 100%;
-            padding: 10px 12px;
+            padding: 8px 10px;
             cursor: pointer;
         }
         
@@ -266,8 +264,8 @@ export function ensureModalStyles() {
         
         .ttw-textarea-small {
             width: 100%;
-            min-height: 100px;
-            padding: 12px;
+            min-height: 70px;
+            padding: 8px 10px;
             font-family: 'Consolas', 'Monaco', monospace;
             font-size: 13px;
             line-height: 1.5;
@@ -277,7 +275,7 @@ export function ensureModalStyles() {
         .ttw-input:focus, .ttw-select:focus, .ttw-textarea:focus, .ttw-textarea-small:focus {
             outline: none;
             border-color: var(--ttw-accent-blue);
-            box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15);
+            box-shadow: none;
         }
         
         .ttw-label {
@@ -374,13 +372,17 @@ export function ensureModalStyles() {
             border-radius: 10px;
             overflow: hidden;
         }
+
+        .ttw-prompt-config-content {
+            padding: 12px 12px 6px 22px;
+        }
         
         .ttw-prompt-config-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 14px 16px;
-            background: rgba(10, 132, 255, 0.1);
+            background: var(--ttw-bg-medium);
             border-bottom: 1px solid var(--ttw-border-color);
             font-weight: 600;
             flex-wrap: wrap;
@@ -388,81 +390,72 @@ export function ensureModalStyles() {
         }
         
         .ttw-prompt-section {
-            border-bottom: 1px solid var(--ttw-border-color);
+            border: 1px solid var(--ttw-border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            background: var(--ttw-bg-dark);
         }
         
         .ttw-prompt-section:last-child {
-            border-bottom: none;
+            margin-bottom: 0;
         }
         
         .ttw-prompt-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px 16px;
+            padding: 10px 12px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.2s ease;
             font-weight: 500;
+            background: var(--ttw-bg-medium);
+            color: var(--ttw-text-primary);
         }
         
         .ttw-prompt-header:hover {
-            filter: brightness(1.1);
-        }
-        
-        .ttw-prompt-header-blue {
-            background: rgba(10, 132, 255, 0.08);
-            color: var(--ttw-accent-blue);
-        }
-        
-        .ttw-prompt-header-purple {
-            background: rgba(191, 90, 242, 0.08);
-            color: var(--ttw-accent-purple);
-        }
-        
-        .ttw-prompt-header-green {
-            background: rgba(48, 209, 88, 0.08);
-            color: var(--ttw-accent-green);
+            background: var(--ttw-bg-light);
         }
         
         .ttw-prompt-content {
             display: none;
-            padding: 16px;
-            background: rgba(0, 0, 0, 0.15);
+            padding: 12px;
+            background: var(--ttw-bg-dark);
         }
         
         /* --- 标签徽章 --- */
         .ttw-badge {
             font-size: 11px;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 500;
         }
         
         .ttw-badge-blue {
-            background: rgba(10, 132, 255, 0.2);
-            color: var(--ttw-accent-blue);
+            background: rgba(37, 99, 235, 0.15);
+            color: #93bbff;
         }
         
         .ttw-badge-gray {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--ttw-text-secondary);
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--ttw-text-muted);
         }
         
         /* --- 文件上传区 --- */
         .ttw-upload-area {
-            border: 2px dashed var(--ttw-border-color);
-            border-radius: 12px;
-            padding: 50px 24px;
+            border: 2px dashed var(--ttw-border-highlight);
+            border-radius: 10px;
+            padding: 28px;
             text-align: center;
             cursor: pointer;
             transition: all 0.25s ease;
-            background: rgba(0, 0, 0, 0.15);
+            background: var(--ttw-bg-medium);
         }
         
         .ttw-upload-area:hover {
             border-color: var(--ttw-accent-blue);
-            background: rgba(10, 132, 255, 0.08);
+            background: var(--ttw-bg-light);
         }
         
         .ttw-upload-area i {
@@ -481,10 +474,10 @@ export function ensureModalStyles() {
             align-items: center;
             gap: 14px;
             padding: 14px 16px;
-            background: rgba(48, 209, 88, 0.1);
+            background: var(--ttw-bg-medium);
             border-radius: 8px;
             margin-top: 16px;
-            border: 1px solid rgba(48, 209, 88, 0.2);
+            border: 1px solid var(--ttw-border-color);
         }
         
         /* --- 记忆队列 --- */
@@ -529,17 +522,18 @@ export function ensureModalStyles() {
         .ttw-progress-bar {
             width: 100%;
             height: 10px;
-            background: rgba(0, 0, 0, 0.3);
+            background: var(--ttw-bg-medium);
             border-radius: 5px;
             overflow: hidden;
             margin-bottom: 14px;
+            border: 1px solid var(--ttw-border-color);
         }
         
         .ttw-progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, var(--ttw-accent-blue), var(--ttw-accent-purple));
+            background: var(--ttw-accent-blue);
             border-radius: 5px;
-            transition: width 0.3s ease;
+            transition: width 0.4s ease;
             width: 0%;
         }
         
@@ -1014,24 +1008,23 @@ export function ensureModalStyles() {
         
         /* --- 按钮样式 --- */
         .ttw-btn {
-            padding: 12px 20px;
+            padding: 7px 12px;
             border: 1px solid var(--ttw-border-color);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.08);
+            border-radius: 6px;
+            background: var(--ttw-bg-medium);
             color: var(--ttw-text-primary);
-            font-size: 14px;
-            font-weight: 500;
+            font-size: 13px;
             cursor: pointer;
-            transition: all 0.25s ease;
+            transition: all 0.15s ease;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 6px;
         }
         
         .ttw-btn:hover {
-            background: rgba(255, 255, 255, 0.12);
-            transform: translateY(-1px);
+            background: var(--ttw-bg-light);
+            border-color: var(--ttw-border-highlight);
         }
         
         .ttw-btn:disabled {
@@ -1041,15 +1034,14 @@ export function ensureModalStyles() {
         }
         
         .ttw-btn-primary {
-            background: linear-gradient(135deg, var(--ttw-accent-blue), #0077ed);
-            border-color: var(--ttw-accent-blue);
+            background: var(--ttw-accent-blue);
+            border-color: transparent;
             color: #fff;
-            box-shadow: 0 4px 12px rgba(10, 132, 255, 0.3);
+            font-weight: 600;
         }
         
         .ttw-btn-primary:hover {
-            background: linear-gradient(135deg, var(--ttw-accent-blue-hover), #1a85ff);
-            box-shadow: 0 6px 16px rgba(10, 132, 255, 0.4);
+            background: var(--ttw-accent-blue-hover);
         }
         
         .ttw-btn-secondary {
@@ -1062,21 +1054,21 @@ export function ensureModalStyles() {
         }
         
         .ttw-btn-warning {
-            background: rgba(255, 159, 10, 0.15);
-            border-color: rgba(255, 159, 10, 0.4);
-            color: var(--ttw-accent-orange);
+            background: rgba(220, 38, 38, 0.12);
+            border-color: rgba(220, 38, 38, 0.5);
+            color: var(--ttw-text-primary);
         }
         
         .ttw-btn-warning:hover {
-            background: rgba(255, 159, 10, 0.25);
+            background: rgba(220, 38, 38, 0.2);
         }
         
         .ttw-btn-small {
-            padding: 8px 14px;
-            font-size: 13px;
+            padding: 5px 10px;
+            font-size: 12px;
             border: 1px solid var(--ttw-border-color);
             border-radius: 6px;
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--ttw-bg-medium);
             color: var(--ttw-text-primary);
             cursor: pointer;
             transition: all 0.2s ease;
@@ -1108,45 +1100,58 @@ export function ensureModalStyles() {
         }
         
         /* --- 分类列表 --- */
-        .ttw-categories-list {
-            max-height: 200px;
-            overflow-y: auto;
-            background: rgba(0, 0, 0, 0.2);
+        .ttw-category-flat-card {
+            padding: 10px 12px;
             border-radius: 8px;
-            padding: 10px;
+            margin-bottom: 10px;
+            background: var(--ttw-bg-medium);
             border: 1px solid var(--ttw-border-color);
+        }
+
+        .ttw-category-flat-header {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--ttw-text-primary);
+        }
+
+        .ttw-categories-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
         }
         
         .ttw-category-item {
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 10px;
-            padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.05);
+            gap: 6px;
+            margin: 0;
+            padding: 8px 10px;
+            background: var(--ttw-bg-dark);
             border-radius: 6px;
-            margin-bottom: 6px;
+            border: 1px solid var(--ttw-border-color);
             transition: all 0.2s ease;
+            cursor: pointer;
         }
         
         .ttw-category-item:hover {
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--ttw-bg-light);
         }
         
         .ttw-category-item input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            accent-color: var(--ttw-accent-purple);
+            width: 16px;
+            height: 16px;
+            margin: 0;
+            accent-color: var(--ttw-accent-blue);
         }
         
         .ttw-category-name {
-            flex: 1;
-            font-size: 14px;
+            font-size: 13px;
             color: var(--ttw-text-primary);
         }
         
         .ttw-category-actions {
-            display: flex;
-            gap: 6px;
+            display: none;
         }
         
         /* --- 默认条目列表 --- */
@@ -1516,11 +1521,11 @@ export function ensureModalStyles() {
         /* --- 占位符提示 --- */
         .ttw-placeholder-hint code {
             user-select: all;
-            background: rgba(10, 132, 255, 0.15);
+            background: var(--ttw-bg-input);
             padding: 2px 6px;
             border-radius: 4px;
             font-size: 12px;
-            color: var(--ttw-accent-blue);
+            color: var(--ttw-text-primary);
         }
         
         /* --- 整合分类项 --- */

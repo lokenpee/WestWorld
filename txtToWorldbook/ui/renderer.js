@@ -148,16 +148,24 @@ export function createListRenderer(deps = {}) {
 
         renderCategoryItem(cat, index, context = {}) {
             const hasDefault = !!context.hasDefault;
+            const iconMap = {
+                '角色': '👤',
+                '地点': '📍',
+                '组织': '🏛️',
+                '道具': '⚔️',
+                '章节剧情': '📜',
+            };
+            const icon = iconMap[cat.name] || '🏷️';
             return `
-                <div class="ttw-category-item">
+                <label class="ttw-category-item" title="${this.escapeAttribute(cat.name)}">
                     <input type="checkbox" class="ttw-category-cb" data-index="${index}" ${cat.enabled ? 'checked' : ''}>
-                    <span class="ttw-category-name">${this.escapeHtml(cat.name)}${cat.isBuiltin ? ' <span style="color:#888;font-size:10px;">(内置)</span>' : ''}</span>
+                    <span class="ttw-category-name">${icon} ${this.escapeHtml(cat.name)}${cat.isBuiltin ? ' <span style="color:var(--ttw-text-muted);font-size:10px;">(内置)</span>' : ''}</span>
                     <div class="ttw-category-actions">
                         <button class="ttw-btn-tiny ttw-edit-cat" data-index="${index}" title="编辑">✏️</button>
                         <button class="ttw-btn-tiny ttw-reset-single-cat" data-index="${index}" title="重置此项" ${hasDefault ? '' : 'style="opacity:0.3;" disabled'}>🔄</button>
                         <button class="ttw-btn-tiny ttw-delete-cat" data-index="${index}" title="删除" ${cat.isBuiltin ? 'disabled style="opacity:0.3;"' : ''}>🗑️</button>
                     </div>
-                </div>`;
+                </label>`;
         },
 
         renderWorldbookEntry(category, entryName, entry, context = {}) {
