@@ -116,7 +116,7 @@ export function createApiService(deps = {}) {
     }
 
     function buildCustomApiRequest(messages, target = 'main', options = {}) {
-        const { disableDirectorJsonMode = false } = options;
+        const { disableDirectorJsonMode = false, forceNonStream = false } = options;
         const config = getApiConfig(target);
         const provider = config.provider;
         const apiKey = config.apiKey;
@@ -210,7 +210,7 @@ export function createApiService(deps = {}) {
                     messages: openaiMessages,
                     temperature: isDirectorTarget ? 0.1 : 0.3,
                     max_tokens: customApiMaxTokens,
-                    stream: true,
+                    stream: !forceNonStream,
                 };
 
                 // Ask director endpoint for strict JSON when supported to reduce free-form prose responses.
@@ -223,7 +223,7 @@ export function createApiService(deps = {}) {
                     headers,
                     body: JSON.stringify(openaiBody),
                 };
-                isStreamRequest = true;
+                isStreamRequest = !forceNonStream;
                 break;
             }
 
@@ -303,6 +303,19 @@ export function createApiService(deps = {}) {
                         } else {
                             throw error;
                         }
+                    }
+
+                    if (!String(result || '').trim() && requestConfig.provider === 'openai-compatible') {
+                        updateStreamContent(`ℹ️ ${logPrefix} 流式响应为空，自动回退非流式重试本次请求\n`);
+                        const fallbackConfig = buildCustomApiRequest(messages, target, {
+                            disableDirectorJsonMode: target === 'director',
+                            forceNonStream: true,
+                        });
+                        const fallbackData = await APICaller.requestJSON(fallbackConfig.requestUrl, {
+                            ...fallbackConfig.requestOptions,
+                            timeout,
+                        });
+                        result = extractCustomApiText(fallbackConfig.provider, fallbackData);
                     }
 
                     debugLog(`${logPrefix} 流式读取完成, 结果长度=${result.length}字符`);

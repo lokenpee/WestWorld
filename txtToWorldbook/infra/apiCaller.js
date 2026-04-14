@@ -99,6 +99,7 @@ const APICaller = {
 		const decoder = new TextDecoder();
 		let fullContent = '';
 		let buffer = '';
+		let rawStreamText = '';
 		let inactivityTimer = null;
 
 		const resetInactivityTimer = () => {
@@ -147,8 +148,8 @@ const APICaller = {
 
 		const consumeLine = (line) => {
 			const trimmed = line.trim();
-			if (!trimmed || trimmed.startsWith(':') || !trimmed.startsWith('data: ')) return;
-			const dataStr = trimmed.slice(6).trim();
+			if (!trimmed || trimmed.startsWith(':') || !trimmed.startsWith('data:')) return;
+			const dataStr = trimmed.replace(/^data:\s*/i, '').trim();
 			if (dataStr === '[DONE]') return;
 			try {
 				const parsed = JSON.parse(dataStr);
@@ -160,13 +161,47 @@ const APICaller = {
 			} catch (e) { }
 		};
 
+		const recoverTextFromRaw = (raw) => {
+			const source = String(raw || '').trim();
+			if (!source) return '';
+
+			// Case 1: server returned a non-stream full JSON body.
+			try {
+				const parsed = JSON.parse(source);
+				const recovered = extractTextFromSsePayload(parsed);
+				if (recovered) return recovered;
+			} catch (e) { }
+
+			// Case 2: server returned SSE lines but parser missed some chunks.
+			let recovered = '';
+			const lines = source.split(/\r?\n/);
+			for (const line of lines) {
+				const trimmed = line.trim();
+				if (!trimmed.startsWith('data:')) continue;
+				const payload = trimmed.replace(/^data:\s*/i, '').trim();
+				if (!payload || payload === '[DONE]') continue;
+				try {
+					const parsed = JSON.parse(payload);
+					const delta = extractTextFromSsePayload(parsed);
+					if (delta) recovered += delta;
+				} catch (e) { }
+			}
+
+			if (recovered) return recovered;
+
+			// Case 3: plain text fallback.
+			return source;
+		};
+
 		resetInactivityTimer();
 		try {
 			while (true) {
 				const { done, value } = await reader.read();
 				if (done) break;
 				resetInactivityTimer();
-				buffer += decoder.decode(value, { stream: true });
+				const chunk = decoder.decode(value, { stream: true });
+				rawStreamText += chunk;
+				buffer += chunk;
 				const lines = buffer.split('\n');
 				buffer = lines.pop() || '';
 				for (const line of lines) {
@@ -179,6 +214,11 @@ const APICaller = {
 
 		if (buffer.trim()) {
 			consumeLine(buffer);
+			rawStreamText += buffer;
+		}
+
+		if (!fullContent.trim()) {
+			fullContent = recoverTextFromRaw(rawStreamText);
 		}
 
 		return fullContent;
