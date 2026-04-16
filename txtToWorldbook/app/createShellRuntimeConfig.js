@@ -26,6 +26,7 @@ export function createShellRuntimeConfig(deps = {}) {
         initializeModalState,
         restoreModalData,
         restoreExistingState,
+        saveStateSnapshot,
         bindModalBasicEventsUI,
         bindSettingEventsUI,
         bindCollapsePanelEventsUI,
@@ -127,6 +128,8 @@ export function createShellRuntimeConfig(deps = {}) {
             initializeModalState,
             restoreModalData,
             restoreExistingState,
+            checkAndRestoreState,
+            saveStateSnapshot,
             onRestoreStateError: (error) => Logger.error('State', '恢复状态失败:', error),
         },
         createModalEventBinderDeps: (createdModalController) => ({

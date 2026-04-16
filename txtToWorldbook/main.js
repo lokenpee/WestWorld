@@ -1205,6 +1205,11 @@ shellRuntime = createShellRuntime(createShellRuntimeConfig({
     initializeModalState: () => _initializeModalState(),
     restoreModalData: () => _restoreModalData(),
     restoreExistingState: (...args) => restoreExistingState(...args),
+    saveStateSnapshot: async () => {
+        if (!Array.isArray(AppState.memory?.queue) || AppState.memory.queue.length <= 0) return;
+        const processedCount = AppState.memory.queue.filter((m) => m?.processed === true).length;
+        await MemoryHistoryDB.saveState(processedCount, { immediate: true });
+    },
     bindModalBasicEventsUI,
     bindSettingEventsUI,
     bindCollapsePanelEventsUI,

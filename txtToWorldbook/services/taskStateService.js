@@ -403,6 +403,7 @@ export function createTaskStateService(deps = {}) {
     async function checkAndRestoreState(options = {}) {
         const {
             showNoStateTip = false,
+            autoRestore = false,
         } = options;
         try {
             const savedState = await MemoryHistoryDB.loadState();
@@ -418,7 +419,10 @@ export function createTaskStateService(deps = {}) {
             const isFinished = totalCount > 0 && processedCount >= totalCount;
             const summary = isFinished ? '检测到上次任务快照（已完成）' : '检测到上次任务快照（未完成）';
             const title = isFinished ? '恢复上次任务' : '恢复未完成任务';
-            if (!await confirmAction(`${summary}\n已处理: ${processedCount}/${totalCount}\n\n是否恢复？`, { title })) {
+            const shouldRestore = autoRestore
+                ? true
+                : await confirmAction(`${summary}\n已处理: ${processedCount}/${totalCount}\n\n是否恢复？`, { title });
+            if (!shouldRestore) {
                 return false;
             }
 
@@ -474,7 +478,11 @@ export function createTaskStateService(deps = {}) {
             const novelNameInput = document.getElementById('ttw-novel-name-input');
             if (novelNameInput && AppState.file.novelName) novelNameInput.value = AppState.file.novelName;
 
-            ErrorHandler.showUserSuccess(`任务快照已恢复：${processedCount}/${totalCount}`);
+            if (autoRestore) {
+                ErrorHandler.showUserSuccess(`已自动恢复任务快照：${processedCount}/${totalCount}`);
+            } else {
+                ErrorHandler.showUserSuccess(`任务快照已恢复：${processedCount}/${totalCount}`);
+            }
             return true;
         } catch (e) {
             Logger.error('Restore', '恢复状态失败:', e);

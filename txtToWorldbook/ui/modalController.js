@@ -10,8 +10,26 @@ export function createModalController(deps) {
         initializeModalState,
         restoreModalData,
         restoreExistingState,
+        checkAndRestoreState,
+        saveStateSnapshot,
         onRestoreStateError,
     } = deps;
+
+    let exitPersistenceBound = false;
+    let exitPersistenceHandler = null;
+
+    function persistSnapshotOnExit() {
+        if (typeof saveStateSnapshot !== 'function') return;
+        Promise.resolve(saveStateSnapshot()).catch(onRestoreStateError);
+    }
+
+    function ensureExitPersistenceBinding() {
+        if (exitPersistenceBound) return;
+        exitPersistenceHandler = () => persistSnapshotOnExit();
+        window.addEventListener('pagehide', exitPersistenceHandler);
+        window.addEventListener('beforeunload', exitPersistenceHandler);
+        exitPersistenceBound = true;
+    }
 
     async function createModal() {
         const previousContainer = getModalContainer();
@@ -26,7 +44,14 @@ export function createModalController(deps) {
 
         initializeModalState();
         restoreModalData();
-        restoreExistingState().catch(onRestoreStateError);
+        await restoreExistingState().catch(onRestoreStateError);
+
+        // Auto-restore persisted snapshot for page refresh/browser reopen scenarios.
+        if (AppState.memory.queue.length <= 0 && typeof checkAndRestoreState === 'function') {
+            await checkAndRestoreState({ autoRestore: true }).catch(onRestoreStateError);
+        }
+
+        ensureExitPersistenceBinding();
     }
 
     function handleEscKey(e) {
@@ -43,6 +68,7 @@ export function createModalController(deps) {
     }
 
     function closeModal() {
+        persistSnapshotOnExit();
         setProcessingStatus('stopped');
 
         const globalSemaphore = getGlobalSemaphore();

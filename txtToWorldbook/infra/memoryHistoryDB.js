@@ -10,7 +10,7 @@
         entryRollStoreName: 'entryRolls', // 新增：条目级别Roll历史
         resolvedDbName: '',
         db: null,
-        stateSaveThrottleMs: 4000,
+        stateSaveThrottleMs: 10000,
         stateSaveTimer: null,
         stateSavePendingState: null,
         stateSavePendingResolvers: [],
