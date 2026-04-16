@@ -1198,6 +1198,7 @@ shellRuntime = createShellRuntime(createShellRuntimeConfig({
     renderCategoriesList,
     renderDefaultWorldbookEntriesUI,
     checkAndRestoreState: (...args) => checkAndRestoreState(...args),
+    restoreTaskSnapshot: () => checkAndRestoreState({ showNoStateTip: true }),
     setProcessingStatus,
     getGlobalSemaphore: () => AppState.globalSemaphore,
     buildModalHtml,

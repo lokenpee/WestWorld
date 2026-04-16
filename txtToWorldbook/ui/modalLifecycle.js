@@ -7,7 +7,6 @@ export function createModalLifecycle(deps) {
         loadCustomCategories,
         renderCategoriesList,
         renderDefaultWorldbookEntriesUI,
-        checkAndRestoreState,
     } = deps;
 
     function initializeModalState() {
@@ -22,7 +21,6 @@ export function createModalLifecycle(deps) {
             renderCategoriesList();
             renderDefaultWorldbookEntriesUI();
         });
-        checkAndRestoreState();
     }
 
     return {

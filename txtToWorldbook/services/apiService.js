@@ -57,6 +57,8 @@ export function createApiService(deps = {}) {
         const timeout = AppState.settings.apiTimeout || 120000;
         const logPrefix = buildApiLogPrefix('main', taskId);
         const combinedPrompt = messagesToString(messages);
+        const taskText = String(taskId || '').trim();
+        const isConsolidateTask = taskText.startsWith('整理:');
         updateStreamContent(`\n📤 ${logPrefix} 发送请求到酒馆API (${messages.length}条消息)...\n`);
         debugLog(`${logPrefix} 酒馆API开始调用, 消息数=${messages.length}, 总长度=${combinedPrompt.length}, 超时=${timeout / 1000}秒`);
 
@@ -108,6 +110,20 @@ export function createApiService(deps = {}) {
             updateStreamContent(`📥 ${logPrefix} 收到响应 (${result.length}字符)\n`);
             return result;
         } catch (error) {
+            const message = String(error?.message || '').toLowerCase();
+            const isTimeoutError = message.includes('超时') || message.includes('timeout');
+
+            if (isConsolidateTask && isTimeoutError) {
+                updateStreamContent(`⚠️ ${logPrefix} 酒馆API超时，正在回退直连主API重试一次...\n`);
+                try {
+                    const fallbackResult = await callCustomAPI(messages, 'main', taskId);
+                    updateStreamContent(`✅ ${logPrefix} 回退直连主API成功\n`);
+                    return fallbackResult;
+                } catch (fallbackError) {
+                    debugLog(`${logPrefix} 回退直连主API失败: ${fallbackError.message}`);
+                }
+            }
+
             debugLog(`${logPrefix} 酒馆API出错: ${error.message}`);
             updateStreamContent(`\n❌ ${logPrefix} 请求失败: ${error.message}\n`);
             try { error.__apiLogged = true; } catch (_) {}

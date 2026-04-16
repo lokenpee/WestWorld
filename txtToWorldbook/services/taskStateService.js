@@ -400,80 +400,97 @@ export function createTaskStateService(deps = {}) {
         }
     }
 
-    async function checkAndRestoreState() {
+    async function checkAndRestoreState(options = {}) {
+        const {
+            showNoStateTip = false,
+        } = options;
         try {
             const savedState = await MemoryHistoryDB.loadState();
-            if (savedState && savedState.memoryQueue && savedState.memoryQueue.length > 0) {
-                const processedCount = savedState.memoryQueue.filter((m) => m.processed).length;
-                const totalCount = savedState.memoryQueue.length;
-                const isFinished = totalCount > 0 && processedCount >= totalCount;
-                const summary = isFinished ? '检测到上次任务快照（已完成）' : '检测到上次任务快照（未完成）';
-                const title = isFinished ? '恢复上次任务' : '恢复未完成任务';
-                if (await confirmAction(`${summary}\n已处理: ${processedCount}/${totalCount}\n\n是否恢复？`, { title })) {
-                    AppState.memory.queue = normalizeMemoryQueue(savedState.memoryQueue);
-                    AppState.worldbook.generated = savedState.generatedWorldbook && typeof savedState.generatedWorldbook === 'object'
-                        ? savedState.generatedWorldbook
-                        : {};
-                    AppState.worldbook.volumes = Array.isArray(savedState.worldbookVolumes) ? savedState.worldbookVolumes : [];
-                    AppState.worldbook.currentVolumeIndex = clampStartIndex(savedState.currentVolumeIndex || 0, AppState.worldbook.volumes.length || 1);
-                    AppState.file.hash = savedState.fileHash;
-                    AppState.experience = normalizeExperience(savedState.experience || AppState.experience, AppState.memory.queue.length);
-
-                    if (savedState.processingState) {
-                        AppState.processing.incrementalMode = savedState.processingState.incrementalMode !== false;
-                        AppState.processing.volumeMode = savedState.processingState.volumeMode === true;
-                    }
-
-                    if (savedState.novelName) AppState.file.novelName = savedState.novelName;
-
-                    if (Object.keys(AppState.worldbook.generated).length === 0) {
-                        rebuildWorldbookFromMemories();
-                    }
-
-                    if (savedState.queueState && typeof savedState.queueState === 'object') {
-                        AppState.memory.startIndex = clampStartIndex(savedState.queueState.startIndex, AppState.memory.queue.length);
-                        AppState.memory.userSelectedIndex = Number.isInteger(savedState.queueState.userSelectedIndex)
-                            ? clampStartIndex(savedState.queueState.userSelectedIndex, AppState.memory.queue.length)
-                            : null;
-                    } else {
-                        AppState.memory.startIndex = AppState.memory.queue.findIndex((m) => !m.processed || m.failed);
-                        if (AppState.memory.startIndex === -1) AppState.memory.startIndex = AppState.memory.queue.length;
-                        AppState.memory.userSelectedIndex = null;
-                    }
-
-                    showQueueSection(true);
-                    updateMemoryQueueUI();
-                    if (AppState.processing.volumeMode) updateVolumeIndicator();
-                    if (AppState.memory.startIndex >= AppState.memory.queue.length || Object.keys(AppState.worldbook.generated).length > 0) {
-                        showResultSection(true);
-                        updateWorldbookPreview();
-                    }
-                    updateStartButtonState(false);
-                    updateSettingsUI();
-                    document.getElementById('ttw-start-btn').disabled = false;
-
-                    document.getElementById('ttw-upload-area').style.display = 'none';
-                    document.getElementById('ttw-file-info').style.display = 'flex';
-                    document.getElementById('ttw-file-name').textContent = '已恢复的任务';
-                    const totalChars = AppState.memory.queue.reduce((sum, m) => sum + m.content.length, 0);
-                    document.getElementById('ttw-file-size').textContent = `(${(totalChars / 1024).toFixed(1)} KB, ${AppState.memory.queue.length}章)`;
-                    const novelNameRow = document.getElementById('ttw-novel-name-row');
-                    if (novelNameRow) novelNameRow.style.display = 'flex';
-                    const novelNameInput = document.getElementById('ttw-novel-name-input');
-                    if (novelNameInput && AppState.file.novelName) novelNameInput.value = AppState.file.novelName;
-                } else {
-                    await MemoryHistoryDB.clearState();
+            if (!savedState || !savedState.memoryQueue || savedState.memoryQueue.length <= 0) {
+                if (showNoStateTip) {
+                    ErrorHandler.showUserSuccess('当前没有可读取的任务快照。');
                 }
+                return false;
             }
+
+            const processedCount = savedState.memoryQueue.filter((m) => m.processed).length;
+            const totalCount = savedState.memoryQueue.length;
+            const isFinished = totalCount > 0 && processedCount >= totalCount;
+            const summary = isFinished ? '检测到上次任务快照（已完成）' : '检测到上次任务快照（未完成）';
+            const title = isFinished ? '恢复上次任务' : '恢复未完成任务';
+            if (!await confirmAction(`${summary}\n已处理: ${processedCount}/${totalCount}\n\n是否恢复？`, { title })) {
+                return false;
+            }
+
+            AppState.memory.queue = normalizeMemoryQueue(savedState.memoryQueue);
+            AppState.worldbook.generated = savedState.generatedWorldbook && typeof savedState.generatedWorldbook === 'object'
+                ? savedState.generatedWorldbook
+                : {};
+            AppState.worldbook.volumes = Array.isArray(savedState.worldbookVolumes) ? savedState.worldbookVolumes : [];
+            AppState.worldbook.currentVolumeIndex = clampStartIndex(savedState.currentVolumeIndex || 0, AppState.worldbook.volumes.length || 1);
+            AppState.file.hash = savedState.fileHash;
+            AppState.experience = normalizeExperience(savedState.experience || AppState.experience, AppState.memory.queue.length);
+
+            if (savedState.processingState) {
+                AppState.processing.incrementalMode = savedState.processingState.incrementalMode !== false;
+                AppState.processing.volumeMode = savedState.processingState.volumeMode === true;
+            }
+
+            if (savedState.novelName) AppState.file.novelName = savedState.novelName;
+
+            if (Object.keys(AppState.worldbook.generated).length === 0) {
+                rebuildWorldbookFromMemories();
+            }
+
+            if (savedState.queueState && typeof savedState.queueState === 'object') {
+                AppState.memory.startIndex = clampStartIndex(savedState.queueState.startIndex, AppState.memory.queue.length);
+                AppState.memory.userSelectedIndex = Number.isInteger(savedState.queueState.userSelectedIndex)
+                    ? clampStartIndex(savedState.queueState.userSelectedIndex, AppState.memory.queue.length)
+                    : null;
+            } else {
+                AppState.memory.startIndex = AppState.memory.queue.findIndex((m) => !m.processed || m.failed);
+                if (AppState.memory.startIndex === -1) AppState.memory.startIndex = AppState.memory.queue.length;
+                AppState.memory.userSelectedIndex = null;
+            }
+
+            showQueueSection(true);
+            updateMemoryQueueUI();
+            if (AppState.processing.volumeMode) updateVolumeIndicator();
+            if (AppState.memory.startIndex >= AppState.memory.queue.length || Object.keys(AppState.worldbook.generated).length > 0) {
+                showResultSection(true);
+                updateWorldbookPreview();
+            }
+            updateStartButtonState(false);
+            updateSettingsUI();
+            document.getElementById('ttw-start-btn').disabled = false;
+
+            document.getElementById('ttw-upload-area').style.display = 'none';
+            document.getElementById('ttw-file-info').style.display = 'flex';
+            document.getElementById('ttw-file-name').textContent = '已恢复的任务';
+            const totalChars = AppState.memory.queue.reduce((sum, m) => sum + m.content.length, 0);
+            document.getElementById('ttw-file-size').textContent = `(${(totalChars / 1024).toFixed(1)} KB, ${AppState.memory.queue.length}章)`;
+            const novelNameRow = document.getElementById('ttw-novel-name-row');
+            if (novelNameRow) novelNameRow.style.display = 'flex';
+            const novelNameInput = document.getElementById('ttw-novel-name-input');
+            if (novelNameInput && AppState.file.novelName) novelNameInput.value = AppState.file.novelName;
+
+            ErrorHandler.showUserSuccess(`任务快照已恢复：${processedCount}/${totalCount}`);
+            return true;
         } catch (e) {
             Logger.error('Restore', '恢复状态失败:', e);
+            return false;
         }
+    }
+
+    async function restoreTaskSnapshot() {
+        return checkAndRestoreState({ showNoStateTip: true });
     }
 
     return {
         saveTaskState,
         loadTaskState,
         checkAndRestoreState,
+        restoreTaskSnapshot,
         restoreExistingState,
     };
 }

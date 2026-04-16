@@ -74,6 +74,7 @@ export function bindExportEvents(deps = {}) {
         showPlotOutlineConfigModal,
         showBatchDeleteRepeatedSegmentsModal,
         importAndMergeWorldbook,
+        restoreTaskSnapshot,
         loadTaskState,
         saveTaskState,
         exportSettings,
@@ -87,6 +88,10 @@ export function bindExportEvents(deps = {}) {
     document.getElementById('ttw-preview-prompt').addEventListener('click', showPromptPreview);
     document.getElementById('ttw-plot-export-config').addEventListener('click', showPlotOutlineConfigModal);
     document.getElementById('ttw-import-json').addEventListener('click', importAndMergeWorldbook);
+    const restoreSnapshotBtn = document.getElementById('ttw-restore-snapshot');
+    if (restoreSnapshotBtn && typeof restoreTaskSnapshot === 'function') {
+        restoreSnapshotBtn.addEventListener('click', restoreTaskSnapshot);
+    }
     const cleanRepeatBtn = document.getElementById('ttw-clean-repeat-segments');
     if (cleanRepeatBtn && typeof showBatchDeleteRepeatedSegmentsModal === 'function') {
         cleanRepeatBtn.addEventListener('click', showBatchDeleteRepeatedSegmentsModal);
@@ -518,6 +523,10 @@ export function bindSettingEvents(deps = {}) {
             saveCurrentSettings();
         } },
         '#ttw-parallel-mode': { change: (e) => { AppState.config.parallel.mode = e.target.value; saveCurrentSettings(); } },
+        '#ttw-chapter-completion-mode': { change: (e) => {
+            AppState.settings.chapterCompletionMode = e.target.value === 'throughput' ? 'throughput' : 'consistency';
+            saveCurrentSettings();
+        } },
         '#ttw-volume-mode': { change: (e) => { AppState.processing.volumeMode = e.target.checked; const indicator = document.getElementById('ttw-volume-indicator'); if (indicator) indicator.style.display = AppState.processing.volumeMode ? 'block' : 'none'; } },
         '#ttw-rechunk-btn': { click: rechunkMemories },
         '#ttw-add-category': { click: showAddCategoryModal },

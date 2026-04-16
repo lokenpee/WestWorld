@@ -361,9 +361,9 @@ export function createDirectorService(deps = {}) {
         let startAnchor = '';
         if (recentAssistant) {
             if (isNewBeat && entryEvent) {
-                startAnchor = `先承接最近AI输出末尾“${recentAssistant}”，再以“${entryEvent}”触发入场并推进当前节拍。`;
+                startAnchor = `先承接最近AI输出末尾“${recentAssistant}”角色行为或话语，再以“${entryEvent}”触发入场事件。`;
             } else {
-                startAnchor = `优先承接最近AI输出末尾“${recentAssistant}”，再接入用户动作继续推进，不重铺背景。`;
+                startAnchor = `优先承接最近AI输出末尾“${recentAssistant}”角色行为或话语。`;
             }   
         } else if (entryEvent) {
             startAnchor = `以“${entryEvent}”作为入场触发继续推进，并与用户当前互动保持连续。`;
@@ -372,11 +372,23 @@ export function createDirectorService(deps = {}) {
         } else {
             startAnchor = '从当前可见动作直接续写，保持连续，不补写超出用户输入边界的剧情。';
         }
+         // ===== end_guideline 新增逻辑 =====
 
+        const freePlayKeywords = /自由推进|随意推进|自由发挥|随意发挥|自由演绎|随意演绎|你继续|你推进|自由写|随便写|随意写|自由发挥剧情|随意发挥剧情/;
+        const isFreePlay = freePlayKeywords.test(recentUser);
+
+        let endGuideline = '';
+        if (isFreePlay) {
+            endGuideline = '本回合只需收束到可中断的临时节点（小结果、可追问钩子或局势变化），不要求完成整个节拍；';
+        } else if (recentUser) {
+            endGuideline = `以用户本轮输入末尾的可见状态为收束锚点，不得越界续写用户未给出的后续动作或结果。`;
+        } else {
+            endGuideline = '本回合收束到可承接的临时节点，不要求完成整节拍。';
+        }
         return {
             mode: isNewBeat ? 'new_beat' : 'in_beat',
             start_anchor: toShortText(startAnchor, 180),
-            end_guideline: '本回合只需收束到可中断的临时节点（小结果、可追问钩子或局势变化），不要求完成整个节拍；收束不得超出用户本轮输入边界。',
+            end_guideline: toShortText(endGuideline, 180),
             entry_event: entryEvent || '',
             recent_assistant: recentAssistant || '',
             recent_user: recentUser || '',
@@ -515,51 +527,50 @@ export function createDirectorService(deps = {}) {
         const prefix = getLanguagePrefix ? getLanguagePrefix() : '';
         return `${prefix}${[
             '你是“互动小说导演”。你的职责是：基于已锁定的当前节拍，为演员AI生成可直接执行的演出步骤框架。',
+            '下面是关键资料：',
+                `本章标题：${chapterTitle}`,
+                `本章摘要：${chapterOutline}`,
+                `当前阶段索引：${currentBeatIdx}`,
+                `用户最新输入：${toShortText(latestUserMessage || '无', 320) || '无'}`,
+
+                '起笔锚点上下文：',
+                `- 场景模式：${contextMode === 'new_beat' ? '新入节拍' : '节拍中段续写'}`,
+                `- 最近AI输出末尾：${contextRecentAssistant}`,  // ✅ 始终显示
+                contextMode === 'new_beat'
+                    ? `- 入场事件：${contextEntryEvent}`                      // 新拍特有
+                    : '',  
+                '当前节拍小说原文（优先依据）：',
+                currentOriginalForPrompt,
+                `- 最近用户动作：${contextRecentUser}`,
+
+                `- 起笔锚点：${startAnchor}`,
+                `- 本回合收束目标：${endGuideline}`,
+                
+                '节拍列表（供定位阶段）：',
+                JSON.stringify(compactBeats, null, 2),
             '',
-            '核心原则：',
-            '1) 以用户本轮输入为绝对边界，导演只能在边界内组织演出，不得越界补写关键动作或结果。',
-            '2) 你要结合：当前节拍原文、最近AI输出、最近用户输入，输出可执行框架。',
-            '3)  必须基于当前节拍原文证据输出 direction_script（起点-过程-终点）。direction_script.action_chain 必须是单个字符串，包含2-4段递进动作并用"→"连接。格式示例：主角出门→遇到胖子→路上闲扯→到潘家园。',
-            '4) direction_script.start 必须参考“起笔锚点”；禁止从当前节拍原文末尾直接续写。',
-            '5) direction_script.end 只写“本回合临时收束点”，不要求完成整节拍，也不得暗示自动切拍。',
-            '6) 未经用户明确输入，不得主动切换主角所在场景；若用户明确提出切拍/转场，按系统锁定节拍执行。',
+            '核心任务：',
+            '1) 你要结合：当前节拍原文证据、最近AI输出、最近用户输入，输出可执行框架 direction_script（起点-过程-终点）。direction_script.action_chain 必须是单个字符串，包含2-4段递进动作并用"→"连接。格式示例：主角出门→遇到胖子→路上闲扯→到潘家园。',
+            '2) 以用户本轮输入为绝对边界，未经用户明确输入，不得主动切换主角所在场景；若用户明确提出切拍/转场，按系统锁定节拍执行。',
             '',
-            '剧情内容与推进核心原则（压缩版）：',
-            '- 台词输入：仅创作世界与非主角角色的反应及下一状态，不预判用户反应，不描写用户沉默。',
-            '- 框架输入：内容必须限定在用户给出的剧情框架区间内，可补充他者观察、互动与环境变化。',
-            '- 混合输入：同时遵循台词与框架规则，既不越界创作剧情，也不代劳主角心理。',
+            'direction_script（起点-过程-终点）编写核心原则：',
+            '1) 当用户表明自由推进剧情时，整个direction_script框架应基于当前节拍原文剧情,保持中等节奏推进，节奏不拖沓、不空转，亦不得在一轮回合内透支整个节拍剧情。',
+            '2) 当用户输入为角色台词时：仅创作世界与在场角色的反应及下一状态，不预判用户反应，不描写用户沉默。',
+            '3) 当用户输入为角色行动时：导演只能在用户输入范围内编写direction_script，不得越界续写关键动作或结果。',
+            '4) 当用户输入为既有角色台词又有角色行动时：同时遵循台词与框架规则，既不越界创作剧情，也不代劳主角心理。',
+            '5) direction_script.start 需要参考“起笔锚点”指示，且内容长度在15字到50字之间；direction_script.end 需要参考“临时收束”目标指导，且内容长度在15字到50字之间。',
+            '6) 当用户输入与原味剧情相近时，导演可以适当参考原文，在不违背用户输入的前提下，尽可能多的参考原文内容。',
+            '7) 当用户输入与原文剧情冲突时：优先保障用户输入的权威性，并可适当参考原文细节，但不得违背用户输入的事实设定和情节走向。',
+
             '',
-            '演绎步骤格式示例：',
-            '「主角出门→遇到胖子→路上闲扯→到潘家园」',
-            '「大金牙凑过来→互相搭话→认下交情」', 
-            '「掏帛书→讲帛书历史→主角认出爷爷的笔记」',
+
             '要求：每个步骤为短动宾结构，步骤间有明确的因果或时间递进关系。',
             '输出硬规则：',
             '1) 只输出 JSON，不要代码块，不要解释文字。',
             '2) direction_script.action_chain 必须是单行字符串，包含2-4段递进动作并用"→"连接，例如：动作A→动作B→动作C。禁止输出 direction_script.steps 数组。',
             `3) stage_idx 必须固定为 ${currentBeatIdx}（系统已完成切拍控制）。`,
-            '4) direction_script.start 需要参考“起笔锚点”；direction_script.end 需要直接引用“临时收束”目标。',
-
-            `章节：${chapterTitle}`,
-            `本章摘要：${chapterOutline}`,
-            `当前阶段索引：${currentBeatIdx}`,
-            `用户最新输入：${toShortText(latestUserMessage || '无', 320) || '无'}`,
-
-            '起笔锚点上下文：',
-            `- 场景模式：${contextMode === 'new_beat' ? '新入节拍' : '节拍中段续写'}`,
-            `- 最近AI输出末尾（优先锚点）：${contextRecentAssistant}`,  // ✅ 始终显示
-            contextMode === 'new_beat'
-                ? `- 入场事件：${contextEntryEvent}`                      // 新拍特有
-                : '',  
-            '当前节拍小说原文（优先依据）：',
-            currentOriginalForPrompt,
-            `- 最近用户动作（次级锚点）：${contextRecentUser}`,
-
-            `- 起笔锚点：${startAnchor}`,
-            `- 本回合收束目标：${endGuideline}`,
+           
             
-            '节拍列表（供定位阶段）：',
-            JSON.stringify(compactBeats, null, 2),
 
 
 
@@ -567,9 +578,9 @@ export function createDirectorService(deps = {}) {
             '{',
             '  "stage_idx": 0,',
             '  "direction_script": {',
-            '    "action_chain": "动作A→动作B→动作C",',
-            '    "start": "...",',
-            '    "end": "..."',
+            '    "action_chain": 将月儿背入闺房→褪去湿衣换上狐裘→脱去鞋袜查看伤势",',
+            '    "start": "我们就这样，朝着家的方向，一步一步走着",',
+            '    "end": "我手捧着月儿红肿的脚踝，轻声安慰着她"',
             '  }',
             '}',
         ].join('\n')}`;
@@ -873,17 +884,16 @@ export function createDirectorService(deps = {}) {
 
         return [
             '# WestWorld 导演->演员执行单（硬导演模式）',
-            '导演：演员秋青子就位！以下内容是导演给你的系统级执行指令，不是给用户看的解释。',
+            '导演：演员秋青子就位！以下内容是导演给你的系统级执行指令，不是给用户看的解释不要复述本执行单，不要解释规则。',
             `- 当前阶段事件梗概: ${currentBeat?.id || `b${stageIdx + 1}`} ${currentBeat?.summary || '当前节拍'}`,
-            '- 输出要求: 按当前预设格式输出剧情正文内容，不要复述本执行单，不要解释规则。',
             '- 禁止事项: 禁止按当前节拍原文末尾直接续写；禁止越出当前节拍范围。',
             '⚠️ 【位置指针】本回合的“唯一起演位置”以【起点】为准：你的第一句必须从【起点】描述的画面/动作起笔，不得从聊天记录最后一句或“当前节拍原文”的末尾接续。',
             '',
-            '## 1) 当前节拍原文背景（仅供理解设定与场景，不是起笔位置）',
-            '提示：不得从下方原文最后一句/末段直接接续；起笔位置以【起点】为准。',
+            '## 1) 当前节拍小说原文',
+            '提示：当你按照导演的框架编写剧情时，尽可能的参照原文内容，必要时可以直接引用，但绝不可与导演框架冲突。',
             currentOriginalSection,
             '',
-            '## 2) 导演演绎指导（起点 -> 过程 -> 终点）',
+            '## 2) 导演演绎指导框架（起点 -> 过程 -> 终点）',
             `- 【起点 - 唯一开始位置】: ${directionScript.start}`,
             `- 动作链: ${actionChain || '围绕当前节拍推进可见动作并收束。'}`,
             '- 过程:',
@@ -894,13 +904,13 @@ export function createDirectorService(deps = {}) {
                 : '- 执行要求: 严格停留在当前节拍内推进动作链；终点只做临时收束，不得跳出当前节拍。',
             '',
             '## 3) 下一节拍预览（仅参考，禁止提前展开）',
+            `- 当前节拍退出事件: ${currentExitCondition}`,
             `- 下一节拍摘要: ${nextBeatSummary}`,
             `- 下一节拍原文前200字: ${nextBeatPreview200}`,
-            `- 当前节拍退出事件: ${currentExitCondition}`,
             '- 结尾软要求: 先对照“导演给出的终点”和“当前节拍退出事件”。仅当两者完全吻合或高度吻合时，最后1-2句才可做趋势性引出，承接下一节拍。',
             '- 结尾限制: 若终点与退出事件不吻合，禁止引出下一节拍，继续在当前节拍内收束。',
             '',
-            `【起笔复述】第一句必须从【起点】起笔：${directionScript.start}`,
+            `【起笔复述】第一句必须参考【起点】：${directionScript.start}`,
         ].join('\n');
     }
 

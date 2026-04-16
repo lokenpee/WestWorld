@@ -62,6 +62,7 @@ export function createModalEventBinder(deps) {
         previewRepeatedSegmentsCleanup,
         executeRepeatedSegmentsCleanup,
         importAndMergeWorldbook,
+        restoreTaskSnapshot,
         loadTaskState,
         saveTaskState,
         exportSettings,

@@ -41,8 +41,6 @@
             directorApiSemaphore: null,
             mainApiConcurrency: 0,
             directorApiConcurrency: 0,
-            pendingWorldbookTasks: new Set(),
-            pendingDirectorTasks: new Set(),
             pendingChapterAssets: new Set(),
         },
         experience: {

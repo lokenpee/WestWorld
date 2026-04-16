@@ -87,8 +87,6 @@ export function createListRenderer(deps = {}) {
 
         renderMemoryItem(memory, index, context = {}) {
             const statusIcon = this.getStatusIcon(memory);
-            const worldbookStatus = String(memory?.worldbookStatus || '').trim().toLowerCase();
-            const normalizedWorldbookStatus = worldbookStatus || 'pending';
             const multiSelect = !!context.multiSelect;
             const selected = !!context.selected;
             const classes = ['ttw-memory-item'];
@@ -96,18 +94,18 @@ export function createListRenderer(deps = {}) {
             if (selected) classes.push('selected-for-delete');
 
             const styleParts = [];
-            if (normalizedWorldbookStatus === 'generating') {
+            if (memory.processing) {
                 styleParts.push('border-left:3px solid rgba(198,206,216,0.55);background:rgba(255,255,255,0.07);');
-            } else if (normalizedWorldbookStatus === 'done') {
+            } else if (memory.processed && !memory.failed) {
                 styleParts.push('opacity:0.92;');
-            } else if (normalizedWorldbookStatus === 'failed') {
+            } else if (memory.failed) {
                 styleParts.push('border-left:3px solid rgba(180,140,140,0.72);background:rgba(255,255,255,0.05);');
             }
 
             const checkboxHtml = multiSelect
                 ? `<input type="checkbox" class="ttw-memory-checkbox" data-index="${index}" ${selected ? 'checked' : ''} style="width:16px;height:16px;accent-color:#9ea4ae;">`
                 : '';
-            const failedHtml = normalizedWorldbookStatus === 'failed' ? '<small style="color:#d8b8b8;font-size:11px;">错误</small>' : '';
+            const failedHtml = memory.failed ? '<small style="color:#d8b8b8;font-size:11px;">错误</small>' : '';
             const titleText = context.useChapterLabel ? `第${index + 1}章` : this.escapeHtml(memory.title || `记忆 ${index + 1}`);
             const sizeText = context.useApproxK
                 ? `${((memory.content || '').length / 1000).toFixed(1)}k`
@@ -252,26 +250,10 @@ export function createListRenderer(deps = {}) {
         },
 
         getStatusIcon(item) {
-            const worldbookStatus = String(item?.worldbookStatus || '').trim().toLowerCase();
-            const directorStatus = String(item?.directorStatus || '').trim().toLowerCase();
-
-            const main = worldbookStatus
-                ? (worldbookStatus === 'generating'
-                    ? (uiIcons?.PROCESSING || '⏳')
-                    : (worldbookStatus === 'failed'
-                        ? (uiIcons?.FAILED || '❌')
-                        : (worldbookStatus === 'done' ? (uiIcons?.SUCCESS || '✅') : '▫️')))
-                : '▫️';
-
-            const director = directorStatus
-                ? (directorStatus === 'generating'
-                    ? '🎬⏳'
-                    : (directorStatus === 'failed'
-                        ? '🎬❌'
-                        : (directorStatus === 'done' ? '🎬✅' : '🎬▫️')))
-                : '🎬▫️';
-
-            return `${main} ${director}`;
+            if (item.processing) return uiIcons?.PROCESSING || '⏳';
+            if (item.failed) return uiIcons?.FAILED || '❌';
+            if (item.processed) return uiIcons?.SUCCESS || '✅';
+            return '⏳';
         },
 
         highlightKeyword(text, keyword) {
