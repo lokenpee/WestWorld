@@ -2,12 +2,94 @@
 
 export function createWorldbookService(deps = {}) {
     const {
+        AppState,
         getIncrementalMode = () => false,
         saveHistory = async () => {},
         debugLog = () => {},
     } = deps;
 
-    function normalizeWorldbookEntry(entry) {
+    function safeString(value) {
+        if (value === null || value === undefined) return '';
+        return String(value);
+    }
+
+    function normalizeFieldToken(fieldName) {
+        const raw = safeString(fieldName).trim();
+        if (!raw) return '';
+        const compact = raw
+            .toLowerCase()
+            .replace(/[\s_\-（）()【】\[\]{}]/g, '')
+            .replace(/(?:补充|扩展|说明|信息)\d*$/g, '');
+
+        if (/^(姓名|人物名称|角色名称|名字|名称)$/.test(compact)) return '名称';
+        if (/^(台词|语录|话语示例|说话风格)$/.test(compact)) return '话语示例';
+        if (/^(履历|经历|背景|背景故事|过往)$/.test(compact)) return '背景故事';
+        if (/^(外貌|形象|外形)$/.test(compact)) return '外貌';
+        if (/^(能力|技能|特长)$/.test(compact)) return '能力';
+        if (/^(性格|性格特征)$/.test(compact)) return '性格';
+
+        return compact;
+    }
+
+    function getAllowedFieldSetByCategory(categoryName) {
+        const categories = AppState?.persistent?.customCategories;
+        if (!Array.isArray(categories) || !categoryName) return null;
+        const category = categories.find((item) => item?.name === categoryName);
+        const guide = safeString(category?.contentGuide);
+        if (!guide.trim()) return null;
+
+        const fields = new Set();
+        const boldRegex = /\*\*\s*([^*\n:：]{1,40})\s*\*\*\s*[:：]/g;
+        let match;
+        while ((match = boldRegex.exec(guide)) !== null) {
+            const key = normalizeFieldToken(match[1]);
+            if (key) fields.add(key);
+        }
+
+        const plainRegex = /^(?:[-*•\d.()（）一二三四五六七八九十、\s]+)?([^:：\n]{1,40})\s*[:：]\s*$/gmu;
+        while ((match = plainRegex.exec(guide)) !== null) {
+            const key = normalizeFieldToken(match[1]);
+            if (key) fields.add(key);
+        }
+
+        return fields.size > 0 ? fields : null;
+    }
+
+    function sanitizeStructuredContentByCategory(content, categoryName) {
+        const raw = safeString(content);
+        if (!raw.trim()) return raw;
+
+        const allowedFields = getAllowedFieldSetByCategory(categoryName);
+        if (!(allowedFields instanceof Set) || allowedFields.size === 0) return raw;
+
+        const lines = raw.split(/\r?\n/);
+        const output = [];
+        let currentFieldAllowed = false;
+        let seenStructuredField = false;
+
+        for (const line of lines) {
+            const fieldMatch = line.match(/^(?:[-*•\d.()（）一二三四五六七八九十、\s]+)?(?:\*\*)?\s*([^:：\n]{1,40}?)\s*(?:\*\*)?\s*[:：](.*)$/u);
+            if (fieldMatch) {
+                seenStructuredField = true;
+                const fieldKey = normalizeFieldToken(fieldMatch[1]);
+                currentFieldAllowed = !!fieldKey && allowedFields.has(fieldKey);
+                if (currentFieldAllowed) {
+                    output.push(line);
+                }
+                continue;
+            }
+
+            if (currentFieldAllowed) {
+                output.push(line);
+            }
+        }
+
+        if (!seenStructuredField) return raw;
+        const sanitized = output.join('\n').trim();
+        return sanitized || raw;
+    }
+
+    function normalizeWorldbookEntry(entry, categoryName = '') {
         if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
         if (entry.content !== undefined && entry['内容'] !== undefined) {
             const contentLen = String(entry.content || '').length;
@@ -17,6 +99,10 @@ export function createWorldbookService(deps = {}) {
         } else if (entry.content !== undefined) {
             entry['内容'] = entry.content;
             delete entry.content;
+        }
+
+        if (entry['内容'] !== undefined) {
+            entry['内容'] = sanitizeStructuredContentByCategory(entry['内容'], categoryName);
         }
 
         if (entry['角色类型'] !== undefined) {
@@ -47,11 +133,11 @@ export function createWorldbookService(deps = {}) {
         for (const category in data) {
             if (typeof data[category] === 'object' && data[category] !== null && !Array.isArray(data[category])) {
                 if (data[category]['关键词'] || data[category]['内容'] || data[category].content) {
-                    normalizeWorldbookEntry(data[category]);
+                    normalizeWorldbookEntry(data[category], category);
                 } else {
                     for (const entryName in data[category]) {
                         if (typeof data[category][entryName] === 'object') {
-                            normalizeWorldbookEntry(data[category][entryName]);
+                            normalizeWorldbookEntry(data[category][entryName], category);
                             if (category === '角色' && !data[category][entryName]['角色类型']) {
                                 data[category][entryName]['角色类型'] = '普通配角';
                             }
@@ -93,7 +179,8 @@ export function createWorldbookService(deps = {}) {
                     if (sourceEntry['内容']) {
                         const existingContent = targetEntry['内容'] || '';
                         const newContent = sourceEntry['内容'];
-                        targetEntry['内容'] = mergeContentByFieldFusion(existingContent, newContent);
+                        const mergedContent = mergeContentByFieldFusion(existingContent, newContent);
+                        targetEntry['内容'] = sanitizeStructuredContentByCategory(mergedContent, category);
                     }
 
                     if (category === '角色') {

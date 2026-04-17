@@ -1,4 +1,5 @@
 ﻿import {
+    DEFAULT_WORLDBOOK_CATEGORIES,
     defaultConsolidatePrompt,
     defaultDirectorFrameworkPrompt,
     defaultDirectorInjectionPrompt,
@@ -459,9 +460,11 @@ export function bindSettingEvents(deps = {}) {
         handleQuickTest,
         rechunkMemories,
         showAddCategoryModal,
+        saveCustomCategories,
         confirmAction,
         resetToDefaultCategories,
         renderCategoriesList,
+        renderCategoryGuidePromptEditors,
         showAddDefaultEntryModal,
         saveDefaultWorldbookEntriesUI,
         applyDefaultWorldbookEntries,
@@ -546,7 +549,7 @@ export function bindSettingEvents(deps = {}) {
         '#ttw-volume-mode': { change: (e) => { AppState.processing.volumeMode = e.target.checked; const indicator = document.getElementById('ttw-volume-indicator'); if (indicator) indicator.style.display = AppState.processing.volumeMode ? 'block' : 'none'; } },
         '#ttw-rechunk-btn': { click: rechunkMemories },
         '#ttw-add-category': { click: showAddCategoryModal },
-        '#ttw-reset-categories': { click: async () => { if (await confirmAction('确定重置为默认分类配置吗？这将清除所有自定义分类。', { title: '重置分类', danger: true })) { await resetToDefaultCategories(); renderCategoriesList(); } } },
+        '#ttw-reset-categories': { click: async () => { if (await confirmAction('确定重置为默认分类配置吗？这将清除所有自定义分类。', { title: '重置分类', danger: true })) { await resetToDefaultCategories(); renderCategoriesList(); if (typeof renderCategoryGuidePromptEditors === 'function') renderCategoryGuidePromptEditors(AppState); } } },
         '#ttw-add-default-entry': { click: showAddDefaultEntryModal },
         '#ttw-apply-default-entries': { click: () => { saveDefaultWorldbookEntriesUI(); const applied = applyDefaultWorldbookEntries(); if (applied) { showResultSection(true); updateWorldbookPreview(); ErrorHandler.showUserSuccess('默认世界书条目已应用！'); } else { ErrorHandler.showUserError('没有默认世界书条目'); } } },
         '#ttw-chapter-regex': { change: (e) => { AppState.config.chapterRegex.pattern = e.target.value; saveCurrentSettings(); } },
@@ -575,6 +578,49 @@ export function bindSettingEvents(deps = {}) {
         '#ttw-save-consolidate-prompt': { click: () => savePromptByType('consolidate') },
         '#ttw-save-director-framework-prompt': { click: () => savePromptByType('director-framework') },
         '#ttw-save-director-injection-prompt': { click: () => savePromptByType('director-injection') }
+    });
+
+    EventDelegate.on(modalContainer, '.ttw-save-cat-guide', 'click', async (e, btn) => {
+        const index = parseInt(btn.getAttribute('data-category-index'), 10);
+        if (!Number.isInteger(index) || index < 0) return;
+
+        const category = AppState.persistent.customCategories[index];
+        if (!category) return;
+
+        const textarea = modalContainer.querySelector(`.ttw-cat-guide-prompt-input[data-category-index="${index}"]`);
+        if (!textarea) return;
+
+        const nextGuide = (textarea.value || '').trim();
+        category.contentGuide = nextGuide || `基于原文的${category.name}描述`;
+        if (typeof saveCustomCategories === 'function') {
+            await saveCustomCategories();
+        }
+        if (ErrorHandler && typeof ErrorHandler.showUserSuccess === 'function') {
+            ErrorHandler.showUserSuccess(`已保存分类提示词：${category.name}`);
+        }
+    });
+
+    EventDelegate.on(modalContainer, '.ttw-reset-cat-guide', 'click', async (e, btn) => {
+        const index = parseInt(btn.getAttribute('data-category-index'), 10);
+        if (!Number.isInteger(index) || index < 0) return;
+
+        const category = AppState.persistent.customCategories[index];
+        if (!category) return;
+
+        const defaultCategory = DEFAULT_WORLDBOOK_CATEGORIES.find((item) => item.name === category.name);
+        const fallbackGuide = `基于原文的${category.name}描述`;
+        const nextGuide = defaultCategory?.contentGuide || fallbackGuide;
+
+        category.contentGuide = nextGuide;
+        const textarea = modalContainer.querySelector(`.ttw-cat-guide-prompt-input[data-category-index="${index}"]`);
+        if (textarea) textarea.value = nextGuide;
+
+        if (typeof saveCustomCategories === 'function') {
+            await saveCustomCategories();
+        }
+        if (ErrorHandler && typeof ErrorHandler.showUserSuccess === 'function') {
+            ErrorHandler.showUserSuccess(`已恢复分类默认提示词：${category.name}`);
+        }
     });
 
     ['ttw-api-key', 'ttw-api-endpoint', 'ttw-api-model', 'ttw-api-max-tokens', 'ttw-chunk-size', 'ttw-api-timeout', 'ttw-api-key-main', 'ttw-api-endpoint-main', 'ttw-api-model-main', 'ttw-api-max-tokens-main', 'ttw-api-key-director', 'ttw-api-endpoint-director', 'ttw-api-model-director', 'ttw-api-max-tokens-director'].forEach((id) => {

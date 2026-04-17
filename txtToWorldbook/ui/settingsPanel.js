@@ -1,9 +1,24 @@
 ﻿import {
+    DEFAULT_WORLDBOOK_CATEGORIES,
     defaultConsolidatePrompt,
     defaultDirectorFrameworkPrompt,
     defaultDirectorInjectionPrompt,
     defaultWorldbookPrompt,
 } from '../core/constants.js';
+
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeAttribute(value) {
+    return escapeHtml(value).replace(/`/g, '&#96;');
+}
 
 function buildCustomApiSectionHtml() {
     const buildApiConfigCard = (target, title) => `
@@ -361,6 +376,23 @@ function buildDirectorInjectionPromptSectionHtml() {
     </div>`;
 }
 
+function buildCategoryGuidePromptSectionHtml() {
+    return `
+    <div class="ttw-prompt-section">
+        <div class="ttw-prompt-header" data-target="ttw-category-guide-prompt-content">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span>🧩</span><span style="font-weight:500;">分类提取提示词</span>
+                <span class="ttw-badge ttw-badge-gray">可编辑</span>
+            </div>
+            <span class="ttw-collapse-icon">▼</span>
+        </div>
+        <div id="ttw-category-guide-prompt-content" class="ttw-prompt-content" style="display:block;">
+            <div class="ttw-setting-hint" style="margin-bottom:8px;">角色、地点、组织等分类的提取字段配置。每个分类可单独折叠、单独保存。</div>
+            <div id="ttw-category-guide-prompt-list"></div>
+        </div>
+    </div>`;
+}
+
 function buildPlotPromptSectionHtml() {
     return `
     <div class="ttw-prompt-section">
@@ -475,6 +507,7 @@ function buildPromptEditorSectionHtml() {
             <span>🛠️ 提示词编辑</span>
         </div>
         <div class="ttw-section-content ttw-prompt-config-content">
+            ${buildCategoryGuidePromptSectionHtml()}
             ${buildWorldbookPromptSectionHtml()}
             ${buildConsolidatePromptSectionHtml()}
             ${buildDirectorFrameworkPromptSectionHtml()}
@@ -868,4 +901,49 @@ export function hydrateSettingsFromState(deps = {}) {
         const copyBtn = document.getElementById('ttw-copy-stream');
         if (copyBtn) copyBtn.style.display = AppState.settings.debugMode ? 'inline-block' : 'none';
     }
+
+    renderCategoryGuidePromptEditors(AppState);
+}
+
+export function renderCategoryGuidePromptEditors(AppState) {
+    const container = document.getElementById('ttw-category-guide-prompt-list');
+    if (!container || !AppState) return;
+
+    const categories = Array.isArray(AppState.persistent?.customCategories)
+        ? AppState.persistent.customCategories
+        : [];
+
+    if (categories.length === 0) {
+        container.innerHTML = '<div class="ttw-setting-hint">暂无分类配置</div>';
+        return;
+    }
+
+    const defaultNameSet = new Set((DEFAULT_WORLDBOOK_CATEGORIES || []).map((item) => item.name));
+    const html = categories.map((category, index) => {
+        const name = escapeHtml(category?.name || `分类${index + 1}`);
+        const guide = escapeHtml(category?.contentGuide || '');
+        const badge = category?.enabled !== false
+            ? '<span class="ttw-badge ttw-badge-blue">启用中</span>'
+            : '<span class="ttw-badge ttw-badge-gray">未启用</span>';
+        const defaultBadge = defaultNameSet.has(category?.name)
+            ? '<span class="ttw-badge ttw-badge-gray">默认分类</span>'
+            : '<span class="ttw-badge ttw-badge-gray">自定义分类</span>';
+
+        return `
+        <details class="ttw-cat-guide-item" style="margin-bottom:10px;border:1px solid var(--ttw-border-color);border-radius:8px;background:var(--ttw-bg-medium);overflow:hidden;">
+            <summary style="cursor:pointer;list-style:none;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span style="font-weight:500;">${name}</span>
+                <span style="display:flex;gap:6px;align-items:center;">${badge}${defaultBadge}</span>
+            </summary>
+            <div style="padding:10px 12px;border-top:1px solid var(--ttw-border-color);">
+                <textarea class="ttw-textarea-small ttw-cat-guide-prompt-input" data-category-index="${index}" rows="6" placeholder="填写该分类的提取字段说明...">${guide}</textarea>
+                <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="ttw-btn ttw-btn-small ttw-save-cat-guide" data-category-index="${index}">💾 保存该分类</button>
+                    <button class="ttw-btn ttw-btn-small ttw-reset-cat-guide" data-category-index="${index}" data-category-name="${escapeAttribute(category?.name || '')}">🔄 恢复默认</button>
+                </div>
+            </div>
+        </details>`;
+    }).join('');
+
+    container.innerHTML = html;
 }

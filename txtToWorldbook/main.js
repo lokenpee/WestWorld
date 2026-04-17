@@ -125,6 +125,7 @@ import {
 } from './ui/renderer.js';
 import {
     buildModalHtml,
+    renderCategoryGuidePromptEditors,
 } from './ui/settingsPanel.js';
 import { createMemoryQueueView } from './ui/memoryQueueView.js';
 import { createStartButtonView } from './ui/startButtonView.js';
@@ -645,6 +646,7 @@ const coreServices = createCoreServices({
         applyMessageChain: (...args) => coreServices.promptService.applyMessageChain(...args),
     },
     worldbookDeps: {
+        AppState,
         getIncrementalMode: () => AppState.processing.incrementalMode,
         saveHistory: (...args) => MemoryHistoryDB.saveHistory(...args),
         debugLog,
@@ -1235,8 +1237,10 @@ shellRuntime = createShellRuntime(createShellRuntimeConfig({
     handleQuickTest,
     rechunkMemories: (...args) => rechunkMemories(...args),
     showAddCategoryModal,
+    saveCustomCategories,
     resetToDefaultCategories,
     showAddDefaultEntryModal,
+    renderCategoryGuidePromptEditors,
     saveDefaultWorldbookEntriesUI,
     applyDefaultWorldbookEntries,
     showResultSection,
