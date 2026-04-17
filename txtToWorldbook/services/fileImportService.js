@@ -68,7 +68,10 @@ export function createFileImportService(deps = {}) {
             showQueueSection(true);
             updateMemoryQueueUI();
 
-            document.getElementById('ttw-start-btn').disabled = false;
+            const worldbookStartBtn = document.getElementById('ttw-start-btn');
+            if (worldbookStartBtn) worldbookStartBtn.disabled = false;
+            const directorStartBtn = document.getElementById('ttw-start-director-btn');
+            if (directorStartBtn) directorStartBtn.disabled = false;
             AppState.memory.startIndex = 0;
             AppState.memory.userSelectedIndex = null;
 
@@ -346,8 +349,16 @@ export function createFileImportService(deps = {}) {
         const novelNameInput = document.getElementById('ttw-novel-name-input');
         if (novelNameInput) novelNameInput.value = '';
 
-        document.getElementById('ttw-start-btn').disabled = true;
-        document.getElementById('ttw-start-btn').textContent = '🚀 开始转换';
+        const worldbookStartBtn = document.getElementById('ttw-start-btn');
+        if (worldbookStartBtn) {
+            worldbookStartBtn.disabled = true;
+            worldbookStartBtn.textContent = '📚 仅提取世界书';
+        }
+        const directorStartBtn = document.getElementById('ttw-start-director-btn');
+        if (directorStartBtn) {
+            directorStartBtn.disabled = true;
+            directorStartBtn.textContent = '🎬 仅导演切拍';
+        }
 
         showQueueSection(false);
         showProgressSection(false);

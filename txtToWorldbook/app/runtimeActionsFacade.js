@@ -4,9 +4,42 @@ export function createRuntimeActionsFacade(deps = {}) {
         ErrorHandler,
         saveCurrentSettings,
         handleStartProcessing,
+        handleStartDirectorProcessing,
         replaceAndCleanService,
         entryConfigModals,
     } = deps;
+
+    function clampStartIndex(index) {
+        const queueLength = AppState.memory.queue.length;
+        if (queueLength <= 0) return 0;
+        return Math.max(0, Math.min(index, queueLength - 1));
+    }
+
+    function worldbookDone(memory) {
+        return memory?.processed === true && memory?.failed !== true;
+    }
+
+    function directorStatus(memory) {
+        const status = String(memory?.chapterOutlineStatus || '').trim().toLowerCase();
+        return status || 'pending';
+    }
+
+    function resolveWorldbookStartIndex() {
+        if (AppState.memory.userSelectedIndex !== null) {
+            return clampStartIndex(AppState.memory.userSelectedIndex);
+        }
+
+        const firstPending = AppState.memory.queue.findIndex((memory) => !worldbookDone(memory));
+        return firstPending === -1 ? 0 : clampStartIndex(firstPending);
+    }
+
+    function resolveDirectorStartIndex() {
+        const firstPending = AppState.memory.queue.findIndex((memory) => {
+            const status = directorStatus(memory);
+            return status !== 'done' && status !== 'failed';
+        });
+        return firstPending === -1 ? 0 : clampStartIndex(firstPending);
+    }
 
     function showCleanTagsModal() {
         if (!replaceAndCleanService) return;
@@ -77,7 +110,36 @@ export function createRuntimeActionsFacade(deps = {}) {
             }
         }
 
-        await handleStartProcessing();
+        AppState.memory.startIndex = resolveWorldbookStartIndex();
+
+        await handleStartProcessing({ mode: 'worldbook-only' });
+    }
+
+    async function handleStartDirectorConversion() {
+        saveCurrentSettings();
+
+        if (AppState.memory.queue.length === 0) {
+            ErrorHandler.showUserError('请先上传文件');
+            return;
+        }
+
+        if (!AppState.settings.useTavernApi) {
+            const provider = AppState.settings.customApiProvider;
+            if ((provider === 'gemini' || provider === 'anthropic') && !AppState.settings.customApiKey) {
+                ErrorHandler.showUserError('请先设置 API Key');
+                return;
+            }
+        }
+
+        AppState.memory.startIndex = resolveDirectorStartIndex();
+        AppState.memory.userSelectedIndex = null;
+
+        if (typeof handleStartDirectorProcessing === 'function') {
+            await handleStartDirectorProcessing({ mode: 'director-only' });
+            return;
+        }
+
+        await handleStartProcessing({ mode: 'director-only' });
     }
 
     return {
@@ -89,5 +151,6 @@ export function createRuntimeActionsFacade(deps = {}) {
         showPlotOutlineConfigModal,
         showCategoryConfigModal,
         handleStartConversion,
+        handleStartDirectorConversion,
     };
 }

@@ -4,65 +4,75 @@ export function createStartButtonView(deps = {}) {
     } = deps;
 
     function updateStartButtonState(isProcessing) {
-        const startBtn = document.getElementById('ttw-start-btn');
-        if (!startBtn) return;
+        const worldbookStartBtn = document.getElementById('ttw-start-btn');
+        const directorStartBtn = document.getElementById('ttw-start-director-btn');
+        if (!worldbookStartBtn && !directorStartBtn) return;
 
         if (!isProcessing && AppState.processing.activeTasks.size > 0) {
             return;
         }
 
         if (isProcessing) {
-            startBtn.disabled = true;
-            startBtn.textContent = '转换中...';
+            const currentMode = String(AppState?.processing?.currentMode || 'both');
+            if (worldbookStartBtn) {
+                worldbookStartBtn.disabled = true;
+                worldbookStartBtn.textContent = currentMode === 'director-only' ? '📚 等待中...' : '📚 处理中...';
+            }
+            if (directorStartBtn) {
+                directorStartBtn.disabled = true;
+                directorStartBtn.textContent = currentMode === 'worldbook-only' ? '🎬 等待中...' : '🎬 处理中...';
+            }
             return;
         }
 
-        startBtn.disabled = false;
-        if (AppState.memory.userSelectedIndex !== null) {
-            startBtn.textContent = `▶️ 从第${AppState.memory.userSelectedIndex + 1}章开始`;
-            AppState.memory.startIndex = AppState.memory.userSelectedIndex;
-            return;
-        }
+        if (worldbookStartBtn) worldbookStartBtn.disabled = false;
+        if (directorStartBtn) directorStartBtn.disabled = false;
 
-        const worldbookStatus = (memory) => {
-            const status = String(memory?.worldbookStatus || '').trim().toLowerCase();
-            return status || 'pending';
-        };
         const directorStatus = (memory) => {
-            const status = String(memory?.directorStatus || '').trim().toLowerCase();
-            if (status) return status;
             const outlineStatus = String(memory?.chapterOutlineStatus || '').trim().toLowerCase();
             if (outlineStatus) return outlineStatus;
             return 'pending';
         };
 
+        const worldbookDone = (memory) => memory?.processed === true && memory?.failed !== true;
+
         const firstWorldbookPending = AppState.memory.queue.findIndex((memory) => {
-            const status = worldbookStatus(memory);
-            return status !== 'done';
+            return !worldbookDone(memory);
         });
         const firstDirectorPending = AppState.memory.queue.findIndex((memory) => {
             const status = directorStatus(memory);
             return status !== 'done' && status !== 'failed';
         });
 
-        const hasProcessedMemories = AppState.memory.queue.some((memory) => worldbookStatus(memory) === 'done');
-        if (hasProcessedMemories && firstWorldbookPending !== -1 && firstWorldbookPending < AppState.memory.queue.length) {
-            const directorLabel = firstDirectorPending === -1 ? '导演已完成' : `导演第${firstDirectorPending + 1}章`;
-            startBtn.textContent = `▶️ 继续转换 (世界书第${firstWorldbookPending + 1}章 / ${directorLabel})`;
-            AppState.memory.startIndex = firstWorldbookPending;
-        } else if (
-            AppState.memory.queue.length > 0
-            && AppState.memory.queue.every((memory) => worldbookStatus(memory) === 'done')
-            && AppState.memory.queue.every((memory) => {
-                const status = directorStatus(memory);
-                return status === 'done' || status === 'failed';
-            })
-        ) {
-            startBtn.textContent = '🚀 重新转换';
-            AppState.memory.startIndex = 0;
-        } else {
-            startBtn.textContent = '🚀 开始转换';
-            AppState.memory.startIndex = 0;
+        const hasWorldbookDone = AppState.memory.queue.some((memory) => worldbookDone(memory));
+        const hasDirectorDone = AppState.memory.queue.some((memory) => directorStatus(memory) === 'done');
+
+        if (worldbookStartBtn) {
+            if (AppState.memory.userSelectedIndex !== null) {
+                worldbookStartBtn.textContent = `▶️ 从第${AppState.memory.userSelectedIndex + 1}章开始提取`;
+            } else if (hasWorldbookDone && firstWorldbookPending !== -1 && firstWorldbookPending < AppState.memory.queue.length) {
+                worldbookStartBtn.textContent = `▶️ 继续提取世界书（第${firstWorldbookPending + 1}章）`;
+            } else if (AppState.memory.queue.length > 0 && AppState.memory.queue.every((memory) => worldbookDone(memory))) {
+                worldbookStartBtn.textContent = '📚 重新提取世界书';
+            } else {
+                worldbookStartBtn.textContent = '📚 仅提取世界书';
+            }
+        }
+
+        if (directorStartBtn) {
+            if (hasDirectorDone && firstDirectorPending !== -1 && firstDirectorPending < AppState.memory.queue.length) {
+                directorStartBtn.textContent = `▶️ 继续导演切拍（第${firstDirectorPending + 1}章）`;
+            } else if (
+                AppState.memory.queue.length > 0
+                && AppState.memory.queue.every((memory) => {
+                    const status = directorStatus(memory);
+                    return status === 'done' || status === 'failed';
+                })
+            ) {
+                directorStartBtn.textContent = '🎬 重跑导演切拍';
+            } else {
+                directorStartBtn.textContent = '🎬 仅导演切拍';
+            }
         }
     }
 

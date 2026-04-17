@@ -856,8 +856,8 @@ async function processMemoryChunkIndependent(options) {
     return getProcessingService().processMemoryChunkIndependent(options);
 }
 
-    async function processMemoryChunksParallel(startIndex, endIndex) {
-        return getProcessingService().processMemoryChunksParallel(startIndex, endIndex);
+    async function processMemoryChunksParallel(startIndex, endIndex, options = {}) {
+        return getProcessingService().processMemoryChunksParallel(startIndex, endIndex, options);
     }
 
 // ============================================================
@@ -876,8 +876,8 @@ async function processMemoryChunkIndependent(options) {
  * @returns {Promise<void>}
  * @throws {Error} 处理过程中发生错误
  */
-async function processMemoryChunk(index, retryCount = 0) {
-    return getProcessingService().processMemoryChunk(index, retryCount);
+async function processMemoryChunk(index, retryCount = 0, options = {}) {
+    return getProcessingService().processMemoryChunk(index, retryCount, options);
 }
 
 async function retryChapterOutline(index) {
@@ -889,8 +889,12 @@ function handleStopProcessing() {
 }
 
     // ========== 主处理流程 ==========
-    async function handleStartProcessing() {
-        return getProcessingService().handleStartProcessing();
+    async function handleStartProcessing(options = {}) {
+        return getProcessingService().handleStartProcessing(options);
+    }
+
+    async function handleStartDirectorProcessing(options = {}) {
+        return getProcessingService().handleStartDirectorProcessing(options);
     }
 
 /**
@@ -1005,6 +1009,7 @@ let {
     showPlotOutlineConfigModal,
     showCategoryConfigModal,
     handleStartConversion,
+    handleStartDirectorConversion,
     showHistoryView,
     rollbackToHistory,
     showSearchModal,
@@ -1120,6 +1125,7 @@ const {
         filterResponseContent,
         handleStopProcessing,
         handleStartProcessing,
+        handleStartDirectorProcessing,
         handleRerollMemory,
         getRerollService,
         getEntryConfig,
@@ -1155,6 +1161,7 @@ const featureBindings = createFeatureBindings({
     showPlotOutlineConfigModal,
     showCategoryConfigModal,
     handleStartConversion,
+    handleStartDirectorConversion,
     showHistoryView,
     rollbackToHistory,
     showSearchModal,
@@ -1238,6 +1245,7 @@ shellRuntime = createShellRuntime(createShellRuntimeConfig({
     handleFileSelect: (...args) => handleFileSelect(...args),
     handleClearFile: (...args) => handleClearFile(...args),
     handleStartConversion: (...args) => handleStartConversion(...args),
+    handleStartDirectorConversion: (...args) => handleStartDirectorConversion(...args),
     handleStopProcessing,
     handleRepairFailedMemories,
     showStartFromSelector,

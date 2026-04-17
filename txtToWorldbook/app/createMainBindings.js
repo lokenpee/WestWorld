@@ -9,6 +9,7 @@ export function createFeaturePlaceholders() {
         showPlotOutlineConfigModal: noop,
         showCategoryConfigModal: noop,
         handleStartConversion: noopAsync,
+        handleStartDirectorConversion: noopAsync,
         showHistoryView: noop,
         rollbackToHistory: noopAsync,
         showSearchModal: noop,

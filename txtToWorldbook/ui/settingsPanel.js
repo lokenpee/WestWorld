@@ -72,7 +72,7 @@ ${buildApiConfigCard('director', '🎬 导演AI配置')}
     </div>`;
 }
 
-const PLUGIN_VERSION = 'v3.7.6';
+const PLUGIN_VERSION = 'v3.7.8';
 
 function buildPluginUpdateHtml() {
     return '';
@@ -677,7 +677,8 @@ function buildModalBodyHtml() {
 function buildModalFooterHtml() {
     return `
     <div class="ttw-modal-footer">
-        <button id="ttw-start-btn" class="ttw-btn ttw-btn-primary ttw-mode-txt" disabled>🚀 开始转换</button>
+        <button id="ttw-start-btn" class="ttw-btn ttw-btn-primary ttw-mode-txt" disabled>📚 仅提取世界书</button>
+        <button id="ttw-start-director-btn" class="ttw-btn ttw-btn-secondary ttw-mode-txt" disabled>🎬 仅导演切拍</button>
     </div>`;
 }
 

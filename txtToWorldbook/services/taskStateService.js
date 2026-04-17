@@ -338,7 +338,10 @@ export function createTaskStateService(deps = {}) {
                 }
 
                 ErrorHandler.showUserSuccess(`工程包导入成功！已处理: ${processedCount}/${AppState.memory.queue.length}（已恢复故事大纲与当前章节进度）`);
-                document.getElementById('ttw-start-btn').disabled = false;
+                const worldbookStartBtn = document.getElementById('ttw-start-btn');
+                if (worldbookStartBtn) worldbookStartBtn.disabled = false;
+                const directorStartBtn = document.getElementById('ttw-start-director-btn');
+                if (directorStartBtn) directorStartBtn.disabled = false;
             } catch (error) {
                 ErrorHandler.showUserError('导入失败: ' + error.message);
             }
@@ -381,7 +384,10 @@ export function createTaskStateService(deps = {}) {
             showQueueSection(true);
             updateMemoryQueueUI();
 
-            document.getElementById('ttw-start-btn').disabled = false;
+            const worldbookStartBtn = document.getElementById('ttw-start-btn');
+            if (worldbookStartBtn) worldbookStartBtn.disabled = false;
+            const directorStartBtn = document.getElementById('ttw-start-director-btn');
+            if (directorStartBtn) directorStartBtn.disabled = false;
             updateStartButtonState(false);
 
             if (AppState.processing.volumeMode) updateVolumeIndicator();
@@ -466,7 +472,10 @@ export function createTaskStateService(deps = {}) {
             }
             updateStartButtonState(false);
             updateSettingsUI();
-            document.getElementById('ttw-start-btn').disabled = false;
+            const worldbookStartBtn2 = document.getElementById('ttw-start-btn');
+            if (worldbookStartBtn2) worldbookStartBtn2.disabled = false;
+            const directorStartBtn2 = document.getElementById('ttw-start-director-btn');
+            if (directorStartBtn2) directorStartBtn2.disabled = false;
 
             document.getElementById('ttw-upload-area').style.display = 'none';
             document.getElementById('ttw-file-info').style.display = 'flex';

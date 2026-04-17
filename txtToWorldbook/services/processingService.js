@@ -272,6 +272,60 @@
         return mode === 'throughput' ? 'throughput' : 'consistency';
     }
 
+    function normalizeProcessingMode(rawMode) {
+        const mode = String(rawMode || '').trim().toLowerCase();
+        if (mode === 'worldbook-only') return 'worldbook-only';
+        if (mode === 'director-only') return 'director-only';
+        return 'both';
+    }
+
+    function shouldRunWorldbook(mode) {
+        return mode === 'worldbook-only' || mode === 'both';
+    }
+
+    function shouldRunDirector(mode) {
+        return mode === 'director-only' || mode === 'both';
+    }
+
+    function getDirectorStatus(memory) {
+        const status = String(memory?.chapterOutlineStatus || '').trim().toLowerCase();
+        return status || 'pending';
+    }
+
+    function isWorldbookDone(memory) {
+        return memory?.processed === true && memory?.failed !== true;
+    }
+
+    function isDirectorSettled(memory) {
+        const status = getDirectorStatus(memory);
+        return status === 'done' || status === 'failed';
+    }
+
+    function shouldSkipMemoryForMode(memory, mode) {
+        if (!memory) return true;
+        if (mode === 'director-only') {
+            return getDirectorStatus(memory) === 'done';
+        }
+        if (mode === 'worldbook-only') {
+            return isWorldbookDone(memory);
+        }
+        return isWorldbookDone(memory) && isDirectorSettled(memory);
+    }
+
+    function getCompletedCountForMode(mode) {
+        if (mode === 'director-only') {
+            return AppState.memory.queue.filter((memory) => isDirectorSettled(memory)).length;
+        }
+        return AppState.memory.queue.filter((memory) => memory?.processed === true).length;
+    }
+
+    function getFailedCountForMode(mode) {
+        if (mode === 'director-only') {
+            return AppState.memory.queue.filter((memory) => getDirectorStatus(memory) === 'failed').length;
+        }
+        return AppState.memory.queue.filter((memory) => memory?.failed).length;
+    }
+
     function compactErrorMessage(error) {
         const raw = String(error?.message || error || '未知错误');
         const singleLine = raw
@@ -1997,17 +2051,104 @@
         throw lastError || new Error(memory.chapterOutlineError);
     }
 
+    async function processDirectorChunk(index, options = {}) {
+        const {
+            runId = AppState.processing.runId || null,
+        } = options;
+        const memory = AppState.memory.queue[index];
+        if (!memory) return null;
+
+        if (!AppState.processing.isRerolling && AppState.processing.isStopped) throw new Error('ABORTED');
+        throwIfRunInactive(runId);
+
+        await waitForPreviousChapterReady(index, runId);
+        throwIfRunInactive(runId);
+
+        ensureChapterRuntime(memory, index);
+        memory.processing = true;
+        updateMemoryQueueUI();
+
+        const chapterIndex = index + 1;
+        updateStreamContent(`🎬 [第${chapterIndex}章] 仅运行导演切拍流程\n`);
+
+        try {
+            await generateChapterAssets(index, { taskId: chapterIndex, force: true, runId });
+            memory.processing = false;
+            updateMemoryQueueUI();
+            return true;
+        } catch (error) {
+            memory.processing = false;
+            updateMemoryQueueUI();
+            if (error?.message === 'ABORTED') throw error;
+            return false;
+        }
+    }
+
+    async function processDirectorChunksParallel(startIndex, endIndex, runId) {
+        const tasks = [];
+        const failedIndices = [];
+
+        for (let i = startIndex; i < endIndex && i < AppState.memory.queue.length; i++) {
+            const memory = AppState.memory.queue[i];
+            if (shouldSkipMemoryForMode(memory, 'director-only')) continue;
+            tasks.push({ index: i, memory });
+        }
+
+        if (tasks.length === 0) return { failedIndices };
+
+        updateStreamContent(`\n🚀 导演并行处理 ${tasks.length} 个章节 (并发: ${AppState.config.parallel.concurrency})\n${'='.repeat(50)}\n`);
+        let completed = 0;
+        AppState.globalSemaphore = new Semaphore(AppState.config.parallel.concurrency);
+
+        const processOne = async (task) => {
+            if (AppState.processing.isStopped) return null;
+            try {
+                await AppState.globalSemaphore.acquire();
+            } catch (e) {
+                if (e.message === 'ABORTED') return null;
+                throw e;
+            }
+            if (AppState.processing.isStopped) {
+                AppState.globalSemaphore.release();
+                return null;
+            }
+
+            AppState.processing.activeTasks.add(task.index);
+            try {
+                updateProgress(((startIndex + completed) / AppState.memory.queue.length) * 100, `🎬 导演处理中 (${completed}/${tasks.length})`);
+                const ok = await processDirectorChunk(task.index, { runId });
+                if (!ok) failedIndices.push(task.index);
+                completed++;
+                updateMemoryQueueUI();
+            } finally {
+                AppState.processing.activeTasks.delete(task.index);
+                AppState.globalSemaphore.release();
+            }
+            return null;
+        };
+
+        await Promise.allSettled(tasks.map((task) => processOne(task)));
+        AppState.processing.activeTasks.clear();
+        AppState.globalSemaphore = null;
+
+        updateMemoryQueueUI();
+        updateStreamContent(`\n${'='.repeat(50)}\n🎬 导演并行处理完成，失败: ${failedIndices.length}/${tasks.length}\n`);
+        return { failedIndices };
+    }
+
     async function processMemoryChunkIndependent(options) {
         const {
             index,
             retryCount = 0,
             customPromptSuffix = '',
             runId = AppState.processing.runId || null,
+            mode = 'both',
         } = options;
         const memory = AppState.memory.queue[index];
         const maxRetries = 3;
         const taskId = index + 1;
         const chapterIndex = index + 1;
+        const runMode = normalizeProcessingMode(mode);
 
         if (!AppState.processing.isRerolling && AppState.processing.isStopped) throw new Error('ABORTED');
         throwIfRunInactive(runId);
@@ -2058,7 +2199,11 @@
 
         updateStreamContent(`\n🔄 [第${chapterIndex}章] 开始处理: ${memory.title}\n`);
         debugLog(`[第${chapterIndex}章] 开始, prompt长度=${prompt.length}字符, 重试=${retryCount}`);
-        updateStreamContent(`📡 [第${chapterIndex}章] 已发起并行子任务：主API世界书 + 导演API章节资产\n`);
+        if (shouldRunDirector(runMode)) {
+            updateStreamContent(`📡 [第${chapterIndex}章] 已发起并行子任务：主API世界书 + 导演API章节资产\n`);
+        } else {
+            updateStreamContent(`📡 [第${chapterIndex}章] 已发起主API世界书任务（导演流程已跳过）\n`);
+        }
 
         let chapterAssetsPromise = null;
         const throughputMode = resolveChapterCompletionMode() === 'throughput';
@@ -2097,15 +2242,17 @@
                 return memoryUpdate;
             })();
 
-            chapterAssetsPromise = (async () => {
-                try {
-                    return await generateChapterAssets(index, { taskId, force: true, runId });
-                } catch (error) {
-                    if (error?.message === 'ABORTED') throw error;
-                    // 章节大纲失败不阻断世界书主流程
-                    return null;
-                }
-            })();
+            if (shouldRunDirector(runMode)) {
+                chapterAssetsPromise = (async () => {
+                    try {
+                        return await generateChapterAssets(index, { taskId, force: true, runId });
+                    } catch (error) {
+                        if (error?.message === 'ABORTED') throw error;
+                        // 章节大纲失败不阻断世界书主流程
+                        return null;
+                    }
+                })();
+            }
 
             let memoryUpdate = null;
             if (throughputMode) {
@@ -2141,7 +2288,7 @@
                 const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
                 updateStreamContent(`🔄 [第${chapterIndex}章] ${delay / 1000}秒后重试...\n`);
                 await new Promise(resolve => setTimeout(resolve, delay));
-                return processMemoryChunkIndependent({ index, retryCount: retryCount + 1, customPromptSuffix, runId });
+                return processMemoryChunkIndependent({ index, retryCount: retryCount + 1, customPromptSuffix, runId, mode: runMode });
             }
 
             if (!canRetry) {
@@ -2152,15 +2299,17 @@
         }
     }
 
-    async function processMemoryChunksParallel(startIndex, endIndex) {
+    async function processMemoryChunksParallel(startIndex, endIndex, options = {}) {
+        const runMode = normalizeProcessingMode(options.mode || 'both');
         const tasks = [];
         const results = new Map();
         const tokenLimitIndices = [];
         const runId = AppState.processing.runId || null;
 
         for (let i = startIndex; i < endIndex && i < AppState.memory.queue.length; i++) {
-            if (AppState.memory.queue[i].processed && !AppState.memory.queue[i].failed) continue;
-            tasks.push({ index: i, memory: AppState.memory.queue[i] });
+            const memory = AppState.memory.queue[i];
+            if (shouldSkipMemoryForMode(memory, runMode)) continue;
+            tasks.push({ index: i, memory });
         }
 
         if (tasks.length === 0) return { tokenLimitIndices };
@@ -2185,7 +2334,7 @@ ${'='.repeat(50)}
             try {
                 debugLog(`[任务${task.index + 1}] 获取信号量成功, 开始处理`);
                 updateProgress(((startIndex + completed) / AppState.memory.queue.length) * 100, `🚀 并行处理中 (${completed}/${tasks.length})`);
-                const result = await processMemoryChunkIndependent({ index: task.index, runId });
+                const result = await processMemoryChunkIndependent({ index: task.index, runId, mode: runMode });
                 completed++;
                 if (result && isRunActive(runId)) {
                     results.set(task.index, result);
@@ -2216,15 +2365,17 @@ ${'='.repeat(50)}
         AppState.processing.activeTasks.clear();
         AppState.globalSemaphore = null;
 
-        const orderedTasks = tasks.filter(task => results.has(task.index)).sort((a, b) => a.index - b.index);
-        for (const task of orderedTasks) {
-            const result = results.get(task.index);
-            task.memory.processed = true;
-            task.memory.failed = false;
-            task.memory.processing = false;
-            task.memory.result = result;
-            await mergeWorldbookDataWithHistory({ target: AppState.worldbook.generated, source: result, memoryIndex: task.index, memoryTitle: task.memory.title });
-            await MemoryHistoryDB.saveRollResult(task.index, result);
+        if (shouldRunWorldbook(runMode)) {
+            const orderedTasks = tasks.filter(task => results.has(task.index)).sort((a, b) => a.index - b.index);
+            for (const task of orderedTasks) {
+                const result = results.get(task.index);
+                task.memory.processed = true;
+                task.memory.failed = false;
+                task.memory.processing = false;
+                task.memory.result = result;
+                await mergeWorldbookDataWithHistory({ target: AppState.worldbook.generated, source: result, memoryIndex: task.index, memoryTitle: task.memory.title });
+                await MemoryHistoryDB.saveRollResult(task.index, result);
+            }
         }
 
         updateMemoryQueueUI();
@@ -2239,6 +2390,7 @@ ${'='.repeat(50)}
         if (AppState.processing.isStopped) return;
 
         const runId = options.runId ?? AppState.processing.runId ?? null;
+        const runMode = normalizeProcessingMode(options.mode || 'both');
         throwIfRunInactive(runId);
         await waitForPreviousChapterReady(index, runId);
         throwIfRunInactive(runId);
@@ -2250,9 +2402,18 @@ ${'='.repeat(50)}
 
         ensureChapterRuntime(memory, index);
 
+        if (!shouldRunWorldbook(runMode)) {
+            await processDirectorChunk(index, { runId });
+            return;
+        }
+
         debugLog(`[串行][第${chapterIndex}章] 开始, 重试=${retryCount}`);
         updateProgress(progress, `正在处理: ${memory.title} (第${chapterIndex}章)${retryCount > 0 ? ` (重试 ${retryCount})` : ''}`);
-        updateStreamContent(`📡 [第${chapterIndex}章] 已发起并行子任务：主API世界书 + 导演API章节资产\n`);
+        if (shouldRunDirector(runMode)) {
+            updateStreamContent(`📡 [第${chapterIndex}章] 已发起并行子任务：主API世界书 + 导演API章节资产\n`);
+        } else {
+            updateStreamContent(`📡 [第${chapterIndex}章] 已发起主API世界书任务（导演流程已跳过）\n`);
+        }
 
         memory.processing = true;
         updateMemoryQueueUI();
@@ -2295,15 +2456,17 @@ ${'='.repeat(50)}
         let chapterAssetsPromise = null;
         const throughputMode = resolveChapterCompletionMode() === 'throughput';
         try {
-            chapterAssetsPromise = (async () => {
-                try {
-                    return await generateChapterAssets(index, { taskId: chapterIndex, force: true, runId });
-                } catch (error) {
-                    if (error?.message === 'ABORTED') throw error;
-                    // 章节大纲失败不阻断世界书主流程
-                    return null;
-                }
-            })();
+            if (shouldRunDirector(runMode)) {
+                chapterAssetsPromise = (async () => {
+                    try {
+                        return await generateChapterAssets(index, { taskId: chapterIndex, force: true, runId });
+                    } catch (error) {
+                        if (error?.message === 'ABORTED') throw error;
+                        // 章节大纲失败不阻断世界书主流程
+                        return null;
+                    }
+                })();
+            }
 
             debugLog(`[串行][第${chapterIndex}章] 主API调用中, prompt长度=${prompt.length}`);
             updateStreamContent(`🧠 [第${chapterIndex}章][主API] 发起世界书请求\n`);
@@ -2332,7 +2495,7 @@ ${'='.repeat(50)}
                     if (chapterAssetsPromise) chapterAssetsPromise.catch(() => null);
                     handleStartNewVolume();
                     await flushStateSave(index);
-                    await processMemoryChunk(index, 0, { runId });
+                    await processMemoryChunk(index, 0, { runId, mode: runMode });
                     return;
                 }
                 const splitResult = splitMemoryIntoTwo(index);
@@ -2340,8 +2503,8 @@ ${'='.repeat(50)}
                     if (chapterAssetsPromise) chapterAssetsPromise.catch(() => null);
                     updateMemoryQueueUI();
                     await flushStateSave(index);
-                    await processMemoryChunk(index, 0, { runId });
-                    await processMemoryChunk(index + 1, 0, { runId });
+                    await processMemoryChunk(index, 0, { runId, mode: runMode });
+                    await processMemoryChunk(index + 1, 0, { runId, mode: runMode });
                     return;
                 }
             }
@@ -2394,7 +2557,7 @@ ${'='.repeat(50)}
                     handleStartNewVolume();
                     await flushStateSave(index);
                     await new Promise(r => setTimeout(r, 500));
-                    await processMemoryChunk(index, 0, { runId });
+                    await processMemoryChunk(index, 0, { runId, mode: runMode });
                     return;
                 }
                 const splitResult = splitMemoryIntoTwo(index);
@@ -2403,8 +2566,8 @@ ${'='.repeat(50)}
                     updateMemoryQueueUI();
                     await flushStateSave(index);
                     await new Promise(r => setTimeout(r, 500));
-                    await processMemoryChunk(index, 0, { runId });
-                    await processMemoryChunk(index + 1, 0, { runId });
+                    await processMemoryChunk(index, 0, { runId, mode: runMode });
+                    await processMemoryChunk(index + 1, 0, { runId, mode: runMode });
                     return;
                 }
             }
@@ -2417,7 +2580,7 @@ ${'='.repeat(50)}
                 const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 10000);
                 updateProgress(progress, `处理失败，${retryDelay / 1000}秒后重试`);
                 await new Promise(r => setTimeout(r, retryDelay));
-                return processMemoryChunk(index, retryCount + 1, { runId });
+                return processMemoryChunk(index, retryCount + 1, { runId, mode: runMode });
             }
 
             if (!canRetry) {
@@ -2438,6 +2601,26 @@ ${'='.repeat(50)}
         if (memory.processed) await new Promise(r => setTimeout(r, 1000));
     }
 
+    async function processDirectorOnlyRange(startIndex, endIndex, runId) {
+        if (AppState.config.parallel.enabled) {
+            const { failedIndices } = await processDirectorChunksParallel(startIndex, endIndex, runId);
+            if (AppState.processing.isStopped) return;
+            for (const index of failedIndices) {
+                if (AppState.processing.isStopped) break;
+                await processDirectorChunk(index, { runId });
+            }
+            return;
+        }
+
+        for (let index = startIndex; index < endIndex; index++) {
+            if (AppState.processing.isStopped) break;
+            const memory = AppState.memory.queue[index];
+            if (shouldSkipMemoryForMode(memory, 'director-only')) continue;
+            await processDirectorChunk(index, { runId });
+            queueStateSave(index + 1);
+        }
+    }
+
     function handleStopProcessing() {
         transitionTo('stopped');
         AppState.processing.runId = null;
@@ -2454,7 +2637,9 @@ ${'='.repeat(50)}
         updateStopButtonVisibility(true);
     }
 
-    async function handleStartProcessing() {
+    async function handleStartProcessing(options = {}) {
+        const runMode = normalizeProcessingMode(options.mode || 'both');
+        AppState.processing.currentMode = runMode;
         showProgressSection(true);
         transitionTo('running');
         const runId = nextRunId();
@@ -2474,14 +2659,19 @@ ${'='.repeat(50)}
         const chapterCompletionModeLabel = resolveChapterCompletionMode() === 'throughput'
             ? '吞吐优先（主先落地，导演后补）'
             : '一致性优先（主+导演汇合）';
+        const modeLabel = runMode === 'worldbook-only'
+            ? '仅提取世界书'
+            : runMode === 'director-only'
+                ? '仅导演切拍'
+                : '世界书 + 导演';
         const chainDesc = (AppState.settings.promptMessageChain || []).filter(m => m.enabled !== false);
         const chainSummary = chainDesc.length <= 1 ? '默认(单条用户消息)' : `${chainDesc.length}条消息[${chainDesc.map(m => m.role === 'system' ? '系统' : m.role === 'assistant' ? 'AI' : '用户').join('→')}]`;
-        updateStreamContent(`🚀 开始处理...\n📊 处理模式: ${AppState.config.parallel.enabled ? `并行 (${AppState.config.parallel.concurrency}并发)` : '串行'}\n🧩 章节完成策略: ${chapterCompletionModeLabel}\n🧵 API并发: 主API=${AppState.processing.mainApiConcurrency || 1} | 导演API=${AppState.processing.directorApiConcurrency || 1}\n🔧 API模式: ${AppState.settings.useTavernApi ? '酒馆API' : '自定义API (' + AppState.settings.customApiProvider + ')'}\n📌 强制章节标记: ${AppState.settings.forceChapterMarker ? '开启' : '关闭'}\n💬 消息链: ${chainSummary}\n🏷️ 启用分类: ${enabledCatNames}\n${'='.repeat(50)}\n`);
+        updateStreamContent(`🚀 开始处理...\n🎯 执行目标: ${modeLabel}\n📊 处理模式: ${AppState.config.parallel.enabled ? `并行 (${AppState.config.parallel.concurrency}并发)` : '串行'}\n🧩 章节完成策略: ${chapterCompletionModeLabel}\n🧵 API并发: 主API=${AppState.processing.mainApiConcurrency || 1} | 导演API=${AppState.processing.directorApiConcurrency || 1}\n🔧 API模式: ${AppState.settings.useTavernApi ? '酒馆API' : '自定义API (' + AppState.settings.customApiProvider + ')'}\n📌 强制章节标记: ${AppState.settings.forceChapterMarker ? '开启' : '关闭'}\n💬 消息链: ${chainSummary}\n🏷️ 启用分类: ${enabledCatNames}\n${'='.repeat(50)}\n`);
         debugLog('调试模式已开启 - 将记录每步耗时');
 
         const effectiveStartIndex = AppState.memory.userSelectedIndex !== null ? AppState.memory.userSelectedIndex : AppState.memory.startIndex;
 
-        if (effectiveStartIndex === 0) {
+        if (effectiveStartIndex === 0 && shouldRunWorldbook(runMode)) {
             const hasProcessedMemories = AppState.memory.queue.some(m => m.processed && !m.failed && m.result);
             if (!hasProcessedMemories) {
                 AppState.worldbook.volumes = [];
@@ -2498,11 +2688,13 @@ ${'='.repeat(50)}
         updateStartButtonState(true);
 
         try {
-            if (AppState.config.parallel.enabled) {
+            if (runMode === 'director-only') {
+                await processDirectorOnlyRange(effectiveStartIndex, AppState.memory.queue.length, runId);
+            } else if (AppState.config.parallel.enabled) {
                 if (AppState.config.parallel.mode === 'independent') {
-                    const { tokenLimitIndices } = await processMemoryChunksParallel(effectiveStartIndex, AppState.memory.queue.length);
+                    const { tokenLimitIndices } = await processMemoryChunksParallel(effectiveStartIndex, AppState.memory.queue.length, { mode: runMode });
                     if (AppState.processing.isStopped) {
-                        const processedCount = AppState.memory.queue.filter(m => m.processed).length;
+                        const processedCount = getCompletedCountForMode(runMode);
                         updateProgress((processedCount / AppState.memory.queue.length) * 100, '⏸️ 已暂停');
                         await flushStateSave(processedCount);
                         updateStartButtonState(false);
@@ -2515,8 +2707,8 @@ ${'='.repeat(50)}
                         updateMemoryQueueUI();
                         for (let i = 0; i < AppState.memory.queue.length; i++) {
                             if (AppState.processing.isStopped) break;
-                            if (!AppState.memory.queue[i].processed || AppState.memory.queue[i].failed) {
-                                await processMemoryChunk(i, 0, { runId });
+                            if (!shouldSkipMemoryForMode(AppState.memory.queue[i], runMode)) {
+                                await processMemoryChunk(i, 0, { runId, mode: runMode });
                             }
                         }
                     }
@@ -2525,11 +2717,11 @@ ${'='.repeat(50)}
                     let i = effectiveStartIndex;
                     while (i < AppState.memory.queue.length && !AppState.processing.isStopped) {
                         const batchEnd = Math.min(i + batchSize, AppState.memory.queue.length);
-                        const { tokenLimitIndices } = await processMemoryChunksParallel(i, batchEnd);
+                        const { tokenLimitIndices } = await processMemoryChunksParallel(i, batchEnd, { mode: runMode });
                         if (AppState.processing.isStopped) break;
                         for (const idx of tokenLimitIndices.sort((a, b) => b - a)) splitMemoryIntoTwo(idx);
                         for (let j = i; j < batchEnd && j < AppState.memory.queue.length && !AppState.processing.isStopped; j++) {
-                            if (!AppState.memory.queue[j].processed || AppState.memory.queue[j].failed) await processMemoryChunk(j, 0, { runId });
+                            if (!shouldSkipMemoryForMode(AppState.memory.queue[j], runMode)) await processMemoryChunk(j, 0, { runId, mode: runMode });
                         }
                         i = batchEnd;
                         queueStateSave(i);
@@ -2544,9 +2736,9 @@ ${'='.repeat(50)}
                         updateStartButtonState(false);
                         return;
                     }
-                    if (AppState.memory.queue[i].processed && !AppState.memory.queue[i].failed) { i++; continue; }
+                    if (shouldSkipMemoryForMode(AppState.memory.queue[i], runMode)) { i++; continue; }
                     const currentLen = AppState.memory.queue.length;
-                    await processMemoryChunk(i, 0, { runId });
+                    await processMemoryChunk(i, 0, { runId, mode: runMode });
                     if (AppState.memory.queue.length > currentLen) i += (AppState.memory.queue.length - currentLen);
                     i++;
                     queueStateSave(i);
@@ -2554,39 +2746,42 @@ ${'='.repeat(50)}
             }
 
             if (AppState.processing.isStopped) {
-                const processedCount = AppState.memory.queue.filter(m => m.processed).length;
+                const processedCount = getCompletedCountForMode(runMode);
                 updateProgress((processedCount / AppState.memory.queue.length) * 100, '⏸️ 已暂停');
                 await flushStateSave(processedCount);
                 updateStartButtonState(false);
                 return;
             }
 
-            if (AppState.processing.volumeMode && Object.keys(AppState.worldbook.generated).length > 0) {
+            if (shouldRunWorldbook(runMode) && AppState.processing.volumeMode && Object.keys(AppState.worldbook.generated).length > 0) {
                 AppState.worldbook.volumes.push({ volumeIndex: AppState.worldbook.currentVolumeIndex, worldbook: JSON.parse(JSON.stringify(AppState.worldbook.generated)), timestamp: Date.now() });
             }
 
-            if (resolveChapterCompletionMode() === 'throughput') {
+            if (shouldRunDirector(runMode) && resolveChapterCompletionMode() === 'throughput') {
                 await flushBackgroundChapterAssets(runId);
             }
 
-            const failedCount = AppState.memory.queue.filter(m => m.failed).length;
+            const failedCount = getFailedCountForMode(runMode);
             if (failedCount > 0) {
                 updateProgress(100, `⚠️ 完成，但有 ${failedCount} 个失败`);
             } else {
                 updateProgress(100, '✅ 全部完成！');
             }
 
-            showResultSection(true);
-            updateWorldbookPreview();
-            updateStreamContent(`\n${'='.repeat(50)}\n✅ 处理完成！\n`);
+            if (shouldRunWorldbook(runMode)) {
+                showResultSection(true);
+                updateWorldbookPreview();
+            }
+            updateStreamContent(`\n${'='.repeat(50)}\n✅ ${runMode === 'director-only' ? '导演处理完成' : '处理完成！'}\n`);
 
             await flushStateSave(AppState.memory.queue.length);
             transitionTo('idle');
             updateStartButtonState(false);
+            AppState.processing.currentMode = 'both';
 
         } catch (error) {
             if (error?.message === 'ABORTED') {
-                const processedCount = AppState.memory.queue.filter(m => m.processed).length;
+                const processedCount = getCompletedCountForMode(runMode);
                 const progress = AppState.memory.queue.length > 0
                     ? (processedCount / AppState.memory.queue.length) * 100
                     : 0;
@@ -2595,6 +2790,7 @@ ${'='.repeat(50)}
                 updateStreamContent(`\nℹ️ ${tip}\n`);
                 if (currentStatus() !== 'stopped') transitionTo('idle');
                 updateStartButtonState(false);
+                AppState.processing.currentMode = 'both';
                 return;
             }
 
@@ -2604,6 +2800,7 @@ ${'='.repeat(50)}
             updateStreamContent(`\n❌ ${brief}\n`);
             if (currentStatus() !== 'stopped') transitionTo('idle');
             updateStartButtonState(false);
+            AppState.processing.currentMode = 'both';
         } finally {
             if (AppState.processing.runId === runId && currentStatus() !== 'running') {
                 AppState.processing.runId = null;
@@ -2612,6 +2809,10 @@ ${'='.repeat(50)}
                 abortApiSemaphores();
             }
         }
+    }
+
+    async function handleStartDirectorProcessing(options = {}) {
+        return handleStartProcessing({ ...options, mode: 'director-only' });
     }
 
     async function handleRepairFailedMemories() {
@@ -2665,6 +2866,7 @@ ${'='.repeat(50)}
         processMemoryChunk,
         handleStopProcessing,
         handleStartProcessing,
+        handleStartDirectorProcessing,
         handleRepairFailedMemories,
         retryChapterOutline,
     };

@@ -54,6 +54,7 @@ export function createFeatureServices(deps = {}) {
         filterResponseContent,
         handleStopProcessing,
         handleStartProcessing,
+        handleStartDirectorProcessing,
         handleRerollMemory,
         getRerollService,
         getEntryConfig,
@@ -94,6 +95,7 @@ export function createFeatureServices(deps = {}) {
         ErrorHandler,
         saveCurrentSettings,
         handleStartProcessing,
+        handleStartDirectorProcessing,
         replaceAndCleanService,
         entryConfigModals,
     });

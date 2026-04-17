@@ -65,6 +65,7 @@ export function createFeatureBindings(featureServices = {}) {
         showPlotOutlineConfigModal: runtimeActionsFacade.showPlotOutlineConfigModal,
         showCategoryConfigModal: runtimeActionsFacade.showCategoryConfigModal,
         handleStartConversion: runtimeActionsFacade.handleStartConversion,
+        handleStartDirectorConversion: runtimeActionsFacade.handleStartDirectorConversion,
         showHistoryView: historyView.showHistoryView,
         rollbackToHistory: historyView.rollbackToHistory,
         showSearchModal: searchModal.showSearchModal,

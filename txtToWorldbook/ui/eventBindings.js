@@ -9,6 +9,7 @@ export function bindActionEvents(deps = {}) {
     const {
         AppState,
         handleStartConversion,
+        handleStartDirectorConversion,
         handleStopProcessing,
         handleRepairFailedMemories,
         showStartFromSelector,
@@ -31,6 +32,10 @@ export function bindActionEvents(deps = {}) {
     } = deps;
 
     document.getElementById('ttw-start-btn').addEventListener('click', handleStartConversion);
+    const directorStartBtn = document.getElementById('ttw-start-director-btn');
+    if (directorStartBtn && typeof handleStartDirectorConversion === 'function') {
+        directorStartBtn.addEventListener('click', handleStartDirectorConversion);
+    }
     document.getElementById('ttw-stop-btn').addEventListener('click', handleStopProcessing);
     document.getElementById('ttw-repair-btn').addEventListener('click', handleRepairFailedMemories);
     document.getElementById('ttw-select-start').addEventListener('click', showStartFromSelector);
