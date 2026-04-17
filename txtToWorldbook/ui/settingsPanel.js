@@ -1,4 +1,9 @@
-﻿import { defaultConsolidatePrompt, defaultWorldbookPrompt } from '../core/constants.js';
+﻿import {
+    defaultConsolidatePrompt,
+    defaultDirectorFrameworkPrompt,
+    defaultDirectorInjectionPrompt,
+    defaultWorldbookPrompt,
+} from '../core/constants.js';
 
 function buildCustomApiSectionHtml() {
     const buildApiConfigCard = (target, title) => `
@@ -306,6 +311,56 @@ function buildConsolidatePromptSectionHtml() {
     </div>`;
 }
 
+function buildDirectorFrameworkPromptSectionHtml() {
+    return `
+    <div class="ttw-prompt-section">
+        <div class="ttw-prompt-header" data-target="ttw-director-framework-content">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span>🎬</span><span style="font-weight:500;">导演AI框架提示词</span>
+                <span class="ttw-badge ttw-badge-blue">必需</span>
+            </div>
+            <span class="ttw-collapse-icon">▼</span>
+        </div>
+        <div id="ttw-director-framework-content" class="ttw-prompt-content" style="display:block;">
+            <div class="ttw-setting-hint" style="margin-bottom:8px;">导演AI用于生成演出框架的提示词模板。可调整语气和规则，但建议保留关键占位符。</div>
+            <div class="ttw-placeholder-hint" style="margin-bottom:10px;">
+                <span style="color:var(--ttw-text-secondary);font-weight:bold;">⚠️ 建议保留占位符：</span>
+                <code>{CHAPTER_TITLE}</code> <code>{CURRENT_BEAT_ORIGINAL}</code> <code>{COMPACT_BEATS_JSON}</code> <code>{FIXED_STAGE_IDX}</code>
+            </div>
+            <textarea id="ttw-director-framework-prompt" rows="8" placeholder="默认内容已自动填充" class="ttw-textarea-small"></textarea>
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="ttw-btn ttw-btn-small ttw-reset-prompt" data-type="director-framework">🔄 恢复默认</button>
+                <button class="ttw-btn ttw-btn-small" id="ttw-save-director-framework-prompt">💾 保存</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function buildDirectorInjectionPromptSectionHtml() {
+    return `
+    <div class="ttw-prompt-section">
+        <div class="ttw-prompt-header" data-target="ttw-director-injection-content">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span>🧭</span><span style="font-weight:500;">导演注入演员前置提示词</span>
+                <span class="ttw-badge ttw-badge-blue">必需</span>
+            </div>
+            <span class="ttw-collapse-icon">▼</span>
+        </div>
+        <div id="ttw-director-injection-content" class="ttw-prompt-content" style="display:block;">
+            <div class="ttw-setting-hint" style="margin-bottom:8px;">导演框架注入到演员AI前的执行单模板。建议保留节拍与动作链占位符。</div>
+            <div class="ttw-placeholder-hint" style="margin-bottom:10px;">
+                <span style="color:var(--ttw-text-secondary);font-weight:bold;">⚠️ 建议保留占位符：</span>
+                <code>{CURRENT_BEAT_SUMMARY}</code> <code>{DIRECTION_START}</code> <code>{DIRECTION_ACTION_CHAIN}</code> <code>{DIRECTION_PROCESS_LINES}</code> <code>{DIRECTION_END}</code>
+            </div>
+            <textarea id="ttw-director-injection-prompt" rows="8" placeholder="默认内容已自动填充" class="ttw-textarea-small"></textarea>
+            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="ttw-btn ttw-btn-small ttw-reset-prompt" data-type="director-injection">🔄 恢复默认</button>
+                <button class="ttw-btn ttw-btn-small" id="ttw-save-director-injection-prompt">💾 保存</button>
+            </div>
+        </div>
+    </div>`;
+}
+
 function buildPlotPromptSectionHtml() {
     return `
     <div class="ttw-prompt-section">
@@ -422,6 +477,8 @@ function buildPromptEditorSectionHtml() {
         <div class="ttw-section-content ttw-prompt-config-content">
             ${buildWorldbookPromptSectionHtml()}
             ${buildConsolidatePromptSectionHtml()}
+            ${buildDirectorFrameworkPromptSectionHtml()}
+            ${buildDirectorInjectionPromptSectionHtml()}
         </div>
     </div>`;
 }
@@ -695,6 +752,16 @@ export function hydrateSettingsFromState(deps = {}) {
 
     const consolidatePromptEl = document.getElementById('ttw-consolidate-prompt');
     if (consolidatePromptEl) consolidatePromptEl.value = AppState.settings.customConsolidatePrompt || defaultConsolidatePrompt;
+
+    const directorFrameworkPromptEl = document.getElementById('ttw-director-framework-prompt');
+    if (directorFrameworkPromptEl) {
+        directorFrameworkPromptEl.value = AppState.settings.customDirectorFrameworkPrompt || defaultDirectorFrameworkPrompt;
+    }
+
+    const directorInjectionPromptEl = document.getElementById('ttw-director-injection-prompt');
+    if (directorInjectionPromptEl) {
+        directorInjectionPromptEl.value = AppState.settings.customDirectorInjectionPrompt || defaultDirectorInjectionPrompt;
+    }
 
     const parallelEnabledEl = document.getElementById('ttw-parallel-enabled');
     if (parallelEnabledEl) parallelEnabledEl.checked = AppState.config.parallel.enabled;

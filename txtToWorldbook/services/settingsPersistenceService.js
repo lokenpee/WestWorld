@@ -79,6 +79,8 @@ export function createSettingsPersistenceService(deps) {
             AppState.settings.customPlotPrompt = document.getElementById('ttw-plot-prompt')?.value || '';
             AppState.settings.customStylePrompt = document.getElementById('ttw-style-prompt')?.value || '';
             AppState.settings.customConsolidatePrompt = document.getElementById('ttw-consolidate-prompt')?.value || '';
+            AppState.settings.customDirectorFrameworkPrompt = document.getElementById('ttw-director-framework-prompt')?.value || '';
+            AppState.settings.customDirectorInjectionPrompt = document.getElementById('ttw-director-injection-prompt')?.value || '';
         }
         AppState.settings.useTavernApi = document.getElementById('ttw-use-tavern-api')?.checked ?? true;
         AppState.settings.parallelEnabled = AppState.config.parallel.enabled;

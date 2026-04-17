@@ -1,4 +1,9 @@
-﻿import { defaultConsolidatePrompt, defaultWorldbookPrompt } from '../core/constants.js';
+﻿import {
+    defaultConsolidatePrompt,
+    defaultDirectorFrameworkPrompt,
+    defaultDirectorInjectionPrompt,
+    defaultWorldbookPrompt,
+} from '../core/constants.js';
 
 export function bindActionEvents(deps = {}) {
     const {
@@ -465,6 +470,8 @@ export function bindSettingEvents(deps = {}) {
     const getPromptDefaultValue = (type) => {
         if (type === 'worldbook') return defaultWorldbookPrompt;
         if (type === 'consolidate') return defaultConsolidatePrompt;
+        if (type === 'director-framework') return defaultDirectorFrameworkPrompt;
+        if (type === 'director-injection') return defaultDirectorInjectionPrompt;
         return '';
     };
 
@@ -476,6 +483,10 @@ export function bindSettingEvents(deps = {}) {
             AppState.settings.customWorldbookPrompt = textarea.value || '';
         } else if (type === 'consolidate') {
             AppState.settings.customConsolidatePrompt = textarea.value || '';
+        } else if (type === 'director-framework') {
+            AppState.settings.customDirectorFrameworkPrompt = textarea.value || '';
+        } else if (type === 'director-injection') {
+            AppState.settings.customDirectorInjectionPrompt = textarea.value || '';
         }
 
         saveCurrentSettings({ syncPromptFieldsFromDom: false });
@@ -543,7 +554,7 @@ export function bindSettingEvents(deps = {}) {
                 const textarea = document.getElementById(`ttw-${type}-prompt`);
                 if (!textarea) return;
 
-                if (type === 'worldbook' || type === 'consolidate') {
+                if (type === 'worldbook' || type === 'consolidate' || type === 'director-framework' || type === 'director-injection') {
                     textarea.value = getPromptDefaultValue(type);
                     if (ErrorHandler && typeof ErrorHandler.showUserSuccess === 'function') {
                         ErrorHandler.showUserSuccess('已恢复默认内容，请点击保存按钮生效');
@@ -556,7 +567,9 @@ export function bindSettingEvents(deps = {}) {
             }
         },
         '#ttw-save-worldbook-prompt': { click: () => savePromptByType('worldbook') },
-        '#ttw-save-consolidate-prompt': { click: () => savePromptByType('consolidate') }
+        '#ttw-save-consolidate-prompt': { click: () => savePromptByType('consolidate') },
+        '#ttw-save-director-framework-prompt': { click: () => savePromptByType('director-framework') },
+        '#ttw-save-director-injection-prompt': { click: () => savePromptByType('director-injection') }
     });
 
     ['ttw-api-key', 'ttw-api-endpoint', 'ttw-api-model', 'ttw-api-max-tokens', 'ttw-chunk-size', 'ttw-api-timeout', 'ttw-api-key-main', 'ttw-api-endpoint-main', 'ttw-api-model-main', 'ttw-api-max-tokens-main', 'ttw-api-key-director', 'ttw-api-endpoint-director', 'ttw-api-model-director', 'ttw-api-max-tokens-director'].forEach((id) => {

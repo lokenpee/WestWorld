@@ -1,3 +1,8 @@
+import {
+    defaultDirectorFrameworkPrompt,
+    defaultDirectorInjectionPrompt,
+} from '../core/constants.js';
+
 export function createDirectorService(deps = {}) {
     const {
         AppState,
@@ -51,6 +56,14 @@ export function createDirectorService(deps = {}) {
         const plain = String(text || '').replace(/\s+/g, ' ').trim();
         if (!plain) return '';
         return plain.length > maxLen ? `${plain.slice(0, maxLen)}...` : plain;
+    }
+
+    function renderPromptTemplate(template, variables = {}) {
+        let output = String(template || '');
+        for (const [key, value] of Object.entries(variables)) {
+            output = output.split(`{${key}}`).join(value == null ? '' : String(value));
+        }
+        return output;
     }
 
     function normalizeActionSegment(text, maxLen = 120) {
@@ -544,66 +557,26 @@ export function createDirectorService(deps = {}) {
             || '本回合收束到可中断临时节点，不要求完成整节拍，且不得超出用户输入边界。';
         const currentOriginal = String(currentBeat?.original_text || '').trim();
         const currentOriginalForPrompt = currentOriginal || '无';
+        const template = String(AppState?.settings?.customDirectorFrameworkPrompt || '').trim() || defaultDirectorFrameworkPrompt;
+        const contextModeLabel = contextMode === 'new_beat' ? '新入节拍' : '节拍中段续写';
+        const entryEventLine = contextMode === 'new_beat' ? `- 入场事件：${contextEntryEvent}` : '';
+        const promptBody = renderPromptTemplate(template, {
+            CHAPTER_TITLE: String(chapterTitle || ''),
+            CHAPTER_OUTLINE: String(chapterOutline || ''),
+            CURRENT_BEAT_INDEX: String(currentBeatIdx),
+            LATEST_USER_MESSAGE: toShortText(latestUserMessage || '无', 320) || '无',
+            CONTEXT_MODE_LABEL: contextModeLabel,
+            RECENT_ASSISTANT: contextRecentAssistant,
+            ENTRY_EVENT_LINE: entryEventLine,
+            CURRENT_BEAT_ORIGINAL: currentOriginalForPrompt,
+            RECENT_USER: contextRecentUser,
+            START_ANCHOR: startAnchor,
+            END_GUIDELINE: endGuideline,
+            COMPACT_BEATS_JSON: JSON.stringify(compactBeats, null, 2),
+            FIXED_STAGE_IDX: String(currentBeatIdx),
+        });
         const prefix = getLanguagePrefix ? getLanguagePrefix() : '';
-        return `${prefix}${[
-            '你是“互动小说导演”。你的职责是：基于已锁定的当前节拍，为演员AI生成可直接执行的演出步骤框架。',
-            '下面是关键资料：',
-                `本章标题：${chapterTitle}`,
-                `本章摘要：${chapterOutline}`,
-                `当前阶段索引：${currentBeatIdx}`,
-                `用户最新输入：${toShortText(latestUserMessage || '无', 320) || '无'}`,
-
-                '起笔锚点上下文：',
-                `- 场景模式：${contextMode === 'new_beat' ? '新入节拍' : '节拍中段续写'}`,
-                `- 最近AI输出末尾：${contextRecentAssistant}`,  // ✅ 始终显示
-                contextMode === 'new_beat'
-                    ? `- 入场事件：${contextEntryEvent}`                      // 新拍特有
-                    : '',  
-                '当前节拍小说原文（优先依据）：',
-                currentOriginalForPrompt,
-                `- 最近用户动作：${contextRecentUser}`,
-
-                `- 起笔锚点：${startAnchor}`,
-                `- 本回合收束目标：${endGuideline}`,
-                
-                '节拍列表（供定位阶段）：',
-                JSON.stringify(compactBeats, null, 2),
-            '',
-            '核心任务：',
-            '1) 你要结合：当前节拍原文证据、最近AI输出、最近用户输入，输出可执行框架 direction_script（起点-过程-终点）。direction_script.action_chain 必须是单个字符串，包含2-4段递进动作并用"→"连接。格式示例：主角出门→遇到胖子→路上闲扯→到潘家园。',
-            '2) 以用户本轮输入为绝对边界，未经用户明确输入，不得主动切换主角所在场景；若用户明确提出切拍/转场，按系统锁定节拍执行。',
-            '',
-            'direction_script（起点-过程-终点）编写核心原则：',
-            '1) 当用户表明自由推进剧情时，整个direction_script框架应基于当前节拍原文剧情,保持中等节奏推进，节奏不拖沓、不空转，亦不得在一轮回合内透支整个节拍剧情。',
-            '2) 当用户输入为角色台词时：仅创作世界与在场角色的反应及下一状态，不预判用户反应，不描写用户沉默。',
-            '3) 当用户输入为角色行动时：导演只能在用户输入范围内编写direction_script，不得越界续写关键动作或结果。',
-            '4) 当用户输入为既有角色台词又有角色行动时：同时遵循台词与框架规则，既不越界创作剧情，也不代劳主角心理。',
-            '5) direction_script.start 需要参考“起笔锚点”指示，且内容长度在15字到50字之间；direction_script.end 需要参考“临时收束”目标指导，且内容长度在15字到50字之间。',
-            '6) 当用户输入与原味剧情相近时，导演可以适当参考原文，在不违背用户输入的前提下，尽可能多的参考原文内容。',
-            '7) 当用户输入与原文剧情冲突时：优先保障用户输入的权威性，并可适当参考原文细节，但不得违背用户输入的事实设定和情节走向。',
-
-            '',
-
-            '要求：每个步骤为短动宾结构，步骤间有明确的因果或时间递进关系。',
-            '输出硬规则：',
-            '1) 只输出 JSON，不要代码块，不要解释文字。',
-            '2) direction_script.action_chain 必须是单行字符串，包含2-4段递进动作并用"→"连接，例如：动作A→动作B→动作C。禁止输出 direction_script.steps 数组。',
-            `3) stage_idx 必须固定为 ${currentBeatIdx}（系统已完成切拍控制）。`,
-           
-            
-
-
-
-            '输出 JSON 模板：',
-            '{',
-            '  "stage_idx": 0,',
-            '  "direction_script": {',
-            '    "action_chain": 将月儿背入闺房→褪去湿衣换上狐裘→脱去鞋袜查看伤势",',
-            '    "start": "我们就这样，朝着家的方向，一步一步走着",',
-            '    "end": "我手捧着月儿红肿的脚踝，轻声安慰着她"',
-            '  }',
-            '}',
-        ].join('\n')}`;
+        return `${prefix}${promptBody}`;
     }
 
     function buildDefaultDirectionScript(currentBeat, nextBeat, directionContext = {}) {
@@ -900,38 +873,29 @@ export function createDirectorService(deps = {}) {
 
         const processLines = steps
             .slice(0, 4)
-            .map((step, idx) => `  ${idx + 1}. ${step}`);
+            .map((step, idx) => `  ${idx + 1}. ${step}`)
+            .join('\n');
 
-        return [
-            '# WestWorld 导演->演员执行单（硬导演模式）',
-            '导演：演员秋青子就位！以下内容是导演给你的系统级执行指令，不是给用户看的解释不要复述本执行单，不要解释规则。',
-            `- 当前阶段事件梗概: ${currentBeat?.id || `b${stageIdx + 1}`} ${currentBeat?.summary || '当前节拍'}`,
-            '- 禁止事项: 禁止按当前节拍原文末尾直接续写；禁止越出当前节拍范围。',
-            '⚠️ 【位置指针】本回合的“唯一起演位置”以【起点】为准：你的第一句必须从【起点】描述的画面/动作起笔，不得从聊天记录最后一句或“当前节拍原文”的末尾接续。',
-            '',
-            '## 1) 当前节拍小说原文',
-            '提示：当你按照导演的框架编写剧情时，尽可能的参照原文内容，必要时可以直接引用，但绝不可与导演框架冲突。',
-            currentOriginalSection,
-            '',
-            '## 2) 导演演绎指导框架（起点 -> 过程 -> 终点）',
-            `- 【起点 - 唯一开始位置】: ${directionScript.start}`,
-            `- 动作链: ${actionChain || '围绕当前节拍推进可见动作并收束。'}`,
-            '- 过程:',
-            ...processLines,
-            `- 终点: ${directionScript.end}`,
-            switchedStage
-                ? '- 执行要求: 本回合发生切拍时，先用1-2句完成过渡/回接，再进入动作链；终点只做临时收束，不等于继续切拍。'
-                : '- 执行要求: 严格停留在当前节拍内推进动作链；终点只做临时收束，不得跳出当前节拍。',
-            '',
-            '## 3) 下一节拍预览（仅参考，禁止提前展开）',
-            `- 当前节拍退出事件: ${currentExitCondition}`,
-            `- 下一节拍摘要: ${nextBeatSummary}`,
-            `- 下一节拍原文前200字: ${nextBeatPreview200}`,
-            '- 结尾软要求: 先对照“导演给出的终点”和“当前节拍退出事件”。仅当两者完全吻合或高度吻合时，最后1-2句才可做趋势性引出，承接下一节拍。',
-            '- 结尾限制: 若终点与退出事件不吻合，禁止引出下一节拍，继续在当前节拍内收束。',
-            '',
-            `【起笔复述】第一句必须参考【起点】：${directionScript.start}`,
-        ].join('\n');
+        const stageExecutionRequirement = switchedStage
+            ? '- 执行要求: 本回合发生切拍时，先用1-2句完成过渡/回接，再进入动作链；终点只做临时收束，不等于继续切拍。'
+            : '- 执行要求: 严格停留在当前节拍内推进动作链；终点只做临时收束，不得跳出当前节拍。';
+
+        const template = String(AppState?.settings?.customDirectorInjectionPrompt || '').trim() || defaultDirectorInjectionPrompt;
+        return renderPromptTemplate(template, {
+            CURRENT_BEAT_ID: String(currentBeat?.id || `b${stageIdx + 1}`),
+            CURRENT_BEAT_SUMMARY: String(currentBeat?.summary || '当前节拍'),
+            CURRENT_BEAT_ORIGINAL: currentOriginalSection,
+            DIRECTION_START: String(directionScript.start || '从当前局面直接接续。'),
+            DIRECTION_ACTION_CHAIN: String(actionChain || '围绕当前节拍推进可见动作并收束。'),
+            DIRECTION_PROCESS_LINES: processLines || '  1. 围绕当前节拍推进一个可见动作。\n  2. 在可承接位置收束本轮输出。',
+            DIRECTION_END: String(directionScript.end || '本回合收束到可承接的临时节点。'),
+            STAGE_EXECUTION_REQUIREMENT: stageExecutionRequirement,
+            CURRENT_EXIT_CONDITION: currentExitCondition,
+            NEXT_BEAT_SUMMARY: nextBeatSummary,
+            NEXT_BEAT_ENTRY_EVENT: nextBeatEntryEvent,
+            NEXT_BEAT_PREVIEW_200: nextBeatPreview200,
+            START_RECAP: String(directionScript.start || '从当前局面直接接续。'),
+        });
     }
 
     async function runDirectorBeforeGeneration(eventData) {
