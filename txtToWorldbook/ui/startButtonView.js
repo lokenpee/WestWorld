@@ -14,13 +14,19 @@ export function createStartButtonView(deps = {}) {
 
         if (isProcessing) {
             const currentMode = String(AppState?.processing?.currentMode || 'both');
+            const directorOnDemand = AppState?.processing?.directorOnDemand === true;
             if (worldbookStartBtn) {
                 worldbookStartBtn.disabled = true;
                 worldbookStartBtn.textContent = currentMode === 'director-only' ? '📚 等待中...' : '📚 处理中...';
             }
             if (directorStartBtn) {
-                directorStartBtn.disabled = true;
-                directorStartBtn.textContent = currentMode === 'worldbook-only' ? '🎬 等待中...' : '🎬 处理中...';
+                if (currentMode === 'worldbook-only' && !directorOnDemand) {
+                    directorStartBtn.disabled = false;
+                    directorStartBtn.textContent = '🎬 追加导演切拍';
+                } else {
+                    directorStartBtn.disabled = true;
+                    directorStartBtn.textContent = '🎬 导演处理中...';
+                }
             }
             return;
         }

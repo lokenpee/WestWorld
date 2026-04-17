@@ -97,6 +97,11 @@ export function createRuntimeActionsFacade(deps = {}) {
     async function handleStartConversion() {
         saveCurrentSettings();
 
+        if (AppState.processing.isRunning) {
+            ErrorHandler.showUserError('当前已有处理任务运行中，请先停止后再启动新的提取流程');
+            return;
+        }
+
         if (AppState.memory.queue.length === 0) {
             ErrorHandler.showUserError('请先上传文件');
             return;
@@ -117,6 +122,37 @@ export function createRuntimeActionsFacade(deps = {}) {
 
     async function handleStartDirectorConversion() {
         saveCurrentSettings();
+
+        if (AppState.processing.isRunning) {
+            const currentMode = String(AppState.processing.currentMode || 'both');
+            if (currentMode === 'worldbook-only') {
+                if (AppState.processing.directorOnDemand) {
+                    ErrorHandler.showUserSuccess('导演切拍已追加到当前任务中');
+                    return;
+                }
+
+                const directorStartIndex = resolveDirectorStartIndex();
+                if (typeof handleStartDirectorProcessing === 'function') {
+                    const started = await handleStartDirectorProcessing({
+                        mode: 'director-only',
+                        appendOnRunning: true,
+                        startIndex: directorStartIndex,
+                    });
+                    if (!started) {
+                        ErrorHandler.showUserError('当前状态无法追加导演切拍，请稍后重试');
+                        return;
+                    }
+                } else {
+                    ErrorHandler.showUserError('导演处理服务未初始化，无法追加导演切拍');
+                    return;
+                }
+                ErrorHandler.showUserSuccess(`已追加导演切拍：从第${directorStartIndex + 1}章起并行处理`);
+                return;
+            }
+
+            ErrorHandler.showUserError('当前已有处理任务运行中，不能再启动新的导演流程');
+            return;
+        }
 
         if (AppState.memory.queue.length === 0) {
             ErrorHandler.showUserError('请先上传文件');

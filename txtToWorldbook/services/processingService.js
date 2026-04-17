@@ -287,6 +287,71 @@
         return mode === 'director-only' || mode === 'both';
     }
 
+    function shouldRunDirectorForChunk(mode, index) {
+        return shouldRunDirector(mode);
+    }
+
+    function shouldFlushDirectorForRun(mode) {
+        return shouldRunDirector(mode);
+    }
+
+    function normalizeStartIndex(rawIndex) {
+        const queueLength = AppState.memory.queue.length;
+        if (queueLength <= 0) return 0;
+        const parsed = Number.isInteger(rawIndex) ? rawIndex : parseInt(rawIndex, 10);
+        if (!Number.isFinite(parsed)) return 0;
+        return Math.max(0, Math.min(parsed, queueLength - 1));
+    }
+
+    function startDirectorOnDemandRunner(options = {}) {
+        const {
+            runId = AppState.processing.runId || null,
+            startIndex = 0,
+        } = options;
+
+        if (!runId || !isRunActive(runId)) {
+            return false;
+        }
+        if (AppState.processing.directorOnDemandPromise) {
+            return true;
+        }
+
+        const safeStartIndex = normalizeStartIndex(startIndex);
+        AppState.processing.directorOnDemand = true;
+        AppState.processing.directorOnDemandStartIndex = safeStartIndex;
+
+        const task = (async () => {
+            updateStreamContent(`🎬 已启动独立导演流程（从第${safeStartIndex + 1}章开始）\n`);
+            for (let index = safeStartIndex; index < AppState.memory.queue.length; index++) {
+                if (!isRunActive(runId)) throw new Error('ABORTED');
+                const memory = AppState.memory.queue[index];
+                if (shouldSkipMemoryForMode(memory, 'director-only')) continue;
+                await processDirectorChunk(index, { runId });
+                queueStateSave(index + 1);
+            }
+            updateStreamContent('✅ 独立导演流程已完成\n');
+        })();
+
+        AppState.processing.directorOnDemandPromise = task
+            .catch((error) => {
+                if (error?.message !== 'ABORTED') {
+                    updateStreamContent(`⚠️ 独立导演流程中断: ${compactErrorMessage(error)}\n`);
+                }
+            })
+            .finally(() => {
+                AppState.processing.directorOnDemandPromise = null;
+                AppState.processing.directorOnDemand = false;
+                AppState.processing.directorOnDemandStartIndex = 0;
+                if (isRunActive(runId)) {
+                    AppState.processing.currentMode = 'worldbook-only';
+                    updateStartButtonState(true);
+                }
+            });
+
+        updateStartButtonState(true);
+        return true;
+    }
+
     function getDirectorStatus(memory) {
         const status = String(memory?.chapterOutlineStatus || '').trim().toLowerCase();
         return status || 'pending';
@@ -2149,6 +2214,7 @@
         const taskId = index + 1;
         const chapterIndex = index + 1;
         const runMode = normalizeProcessingMode(mode);
+        const directorEnabledForChunk = shouldRunDirectorForChunk(runMode, index);
 
         if (!AppState.processing.isRerolling && AppState.processing.isStopped) throw new Error('ABORTED');
         throwIfRunInactive(runId);
@@ -2199,7 +2265,7 @@
 
         updateStreamContent(`\n🔄 [第${chapterIndex}章] 开始处理: ${memory.title}\n`);
         debugLog(`[第${chapterIndex}章] 开始, prompt长度=${prompt.length}字符, 重试=${retryCount}`);
-        if (shouldRunDirector(runMode)) {
+        if (directorEnabledForChunk) {
             updateStreamContent(`📡 [第${chapterIndex}章] 已发起并行子任务：主API世界书 + 导演API章节资产\n`);
         } else {
             updateStreamContent(`📡 [第${chapterIndex}章] 已发起主API世界书任务（导演流程已跳过）\n`);
@@ -2208,7 +2274,7 @@
         let chapterAssetsPromise = null;
         const throughputMode = resolveChapterCompletionMode() === 'throughput';
         try {
-            debugLog(`[第${chapterIndex}章] 启动并行子任务: 主API世界书 + 导演API章节资产`);
+            debugLog(`[第${chapterIndex}章] 启动并行子任务: ${directorEnabledForChunk ? '主API世界书 + 导演API章节资产' : '主API世界书'}`);
             const worldbookPromise = (async () => {
                 debugLog(`[第${chapterIndex}章][主API] 调用中...`);
                 updateStreamContent(`🧠 [第${chapterIndex}章][主API] 发起世界书请求\n`);
@@ -2242,7 +2308,7 @@
                 return memoryUpdate;
             })();
 
-            if (shouldRunDirector(runMode)) {
+            if (directorEnabledForChunk) {
                 chapterAssetsPromise = (async () => {
                     try {
                         return await generateChapterAssets(index, { taskId, force: true, runId });
@@ -2399,6 +2465,7 @@ ${'='.repeat(50)}
         const progress = ((index + 1) / AppState.memory.queue.length) * 100;
         const maxRetries = 3;
         const chapterIndex = index + 1;
+        const directorEnabledForChunk = shouldRunDirectorForChunk(runMode, index);
 
         ensureChapterRuntime(memory, index);
 
@@ -2409,7 +2476,7 @@ ${'='.repeat(50)}
 
         debugLog(`[串行][第${chapterIndex}章] 开始, 重试=${retryCount}`);
         updateProgress(progress, `正在处理: ${memory.title} (第${chapterIndex}章)${retryCount > 0 ? ` (重试 ${retryCount})` : ''}`);
-        if (shouldRunDirector(runMode)) {
+        if (directorEnabledForChunk) {
             updateStreamContent(`📡 [第${chapterIndex}章] 已发起并行子任务：主API世界书 + 导演API章节资产\n`);
         } else {
             updateStreamContent(`📡 [第${chapterIndex}章] 已发起主API世界书任务（导演流程已跳过）\n`);
@@ -2456,7 +2523,7 @@ ${'='.repeat(50)}
         let chapterAssetsPromise = null;
         const throughputMode = resolveChapterCompletionMode() === 'throughput';
         try {
-            if (shouldRunDirector(runMode)) {
+            if (directorEnabledForChunk) {
                 chapterAssetsPromise = (async () => {
                     try {
                         return await generateChapterAssets(index, { taskId: chapterIndex, force: true, runId });
@@ -2624,6 +2691,10 @@ ${'='.repeat(50)}
     function handleStopProcessing() {
         transitionTo('stopped');
         AppState.processing.runId = null;
+        AppState.processing.currentMode = 'both';
+        AppState.processing.directorOnDemand = false;
+        AppState.processing.directorOnDemandStartIndex = 0;
+        AppState.processing.directorOnDemandPromise = null;
 
         if (AppState.globalSemaphore) AppState.globalSemaphore.abort();
         abortApiSemaphores();
@@ -2640,6 +2711,11 @@ ${'='.repeat(50)}
     async function handleStartProcessing(options = {}) {
         const runMode = normalizeProcessingMode(options.mode || 'both');
         AppState.processing.currentMode = runMode;
+        AppState.processing.directorOnDemand = shouldRunDirector(runMode);
+        AppState.processing.directorOnDemandStartIndex = runMode === 'worldbook-only'
+            ? Math.max(0, AppState.memory.startIndex || 0)
+            : 0;
+        AppState.processing.directorOnDemandPromise = null;
         showProgressSection(true);
         transitionTo('running');
         const runId = nextRunId();
@@ -2757,8 +2833,14 @@ ${'='.repeat(50)}
                 AppState.worldbook.volumes.push({ volumeIndex: AppState.worldbook.currentVolumeIndex, worldbook: JSON.parse(JSON.stringify(AppState.worldbook.generated)), timestamp: Date.now() });
             }
 
-            if (shouldRunDirector(runMode) && resolveChapterCompletionMode() === 'throughput') {
+            if (shouldFlushDirectorForRun(runMode) && resolveChapterCompletionMode() === 'throughput') {
                 await flushBackgroundChapterAssets(runId);
+            }
+
+            if (runMode === 'worldbook-only' && AppState.processing.directorOnDemandPromise) {
+                updateStreamContent('⏳ 等待独立导演流程完成...\n');
+                await AppState.processing.directorOnDemandPromise;
+                throwIfRunInactive(runId);
             }
 
             const failedCount = getFailedCountForMode(runMode);
@@ -2778,6 +2860,9 @@ ${'='.repeat(50)}
             transitionTo('idle');
             updateStartButtonState(false);
             AppState.processing.currentMode = 'both';
+            AppState.processing.directorOnDemand = false;
+            AppState.processing.directorOnDemandStartIndex = 0;
+            AppState.processing.directorOnDemandPromise = null;
 
         } catch (error) {
             if (error?.message === 'ABORTED') {
@@ -2791,6 +2876,9 @@ ${'='.repeat(50)}
                 if (currentStatus() !== 'stopped') transitionTo('idle');
                 updateStartButtonState(false);
                 AppState.processing.currentMode = 'both';
+                AppState.processing.directorOnDemand = false;
+                AppState.processing.directorOnDemandStartIndex = 0;
+                AppState.processing.directorOnDemandPromise = null;
                 return;
             }
 
@@ -2801,6 +2889,9 @@ ${'='.repeat(50)}
             if (currentStatus() !== 'stopped') transitionTo('idle');
             updateStartButtonState(false);
             AppState.processing.currentMode = 'both';
+            AppState.processing.directorOnDemand = false;
+            AppState.processing.directorOnDemandStartIndex = 0;
+            AppState.processing.directorOnDemandPromise = null;
         } finally {
             if (AppState.processing.runId === runId && currentStatus() !== 'running') {
                 AppState.processing.runId = null;
@@ -2812,7 +2903,16 @@ ${'='.repeat(50)}
     }
 
     async function handleStartDirectorProcessing(options = {}) {
-        return handleStartProcessing({ ...options, mode: 'director-only' });
+        if (options?.appendOnRunning) {
+            const currentMode = normalizeProcessingMode(AppState.processing.currentMode || 'both');
+            if (!AppState.processing.isRunning || currentMode !== 'worldbook-only') {
+                return false;
+            }
+            const startIndex = normalizeStartIndex(options.startIndex ?? 0);
+            return startDirectorOnDemandRunner({ runId: AppState.processing.runId, startIndex });
+        }
+        await handleStartProcessing({ ...options, mode: 'director-only' });
+        return true;
     }
 
     async function handleRepairFailedMemories() {
