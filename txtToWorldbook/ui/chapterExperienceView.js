@@ -704,6 +704,7 @@ export function createChapterExperienceView(deps = {}) {
             width: '900px',
             maxWidth: '94vw',
             maxHeight: '84vh',
+            closeOnOverlay: false,
             onClose: () => {
                 activeEditorModal = null;
             },
