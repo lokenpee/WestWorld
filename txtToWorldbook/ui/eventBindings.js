@@ -31,6 +31,54 @@ export function bindActionEvents(deps = {}) {
         showCurrentChapterPanel,
         showSettingsPanel,
     } = deps;
+    const LAST_MODAL_VIEW_STORAGE_KEY = 'westworldTxtToWorldbookLastModalView';
+    const SUPPORTED_VIEW_MODES = new Set(['txt', 'outline', 'current', 'progress', 'settings', 'prompt-editor']);
+
+    function normalizeViewMode(mode) {
+        const normalized = String(mode || '').trim().toLowerCase();
+        return SUPPORTED_VIEW_MODES.has(normalized) ? normalized : '';
+    }
+
+    function resolveInitialViewMode() {
+        const fromUi = normalizeViewMode(AppState?.ui?.lastModalView);
+        if (fromUi) return fromUi;
+
+        const fromSettings = normalizeViewMode(AppState?.settings?.lastModalView);
+        if (fromSettings) return fromSettings;
+
+        try {
+            const fromStorage = normalizeViewMode(localStorage.getItem(LAST_MODAL_VIEW_STORAGE_KEY));
+            if (fromStorage) return fromStorage;
+        } catch (_) {
+            // ignore localStorage read errors
+        }
+
+        return 'txt';
+    }
+
+    function restoreInitialView() {
+        const initialView = resolveInitialViewMode();
+        if (initialView === 'outline' && typeof showStoryOutlinePanel === 'function') {
+            showStoryOutlinePanel();
+            return;
+        }
+        if (initialView === 'current' && typeof showCurrentChapterPanel === 'function') {
+            void Promise.resolve(showCurrentChapterPanel());
+            return;
+        }
+        if (initialView === 'progress' && typeof showProgressPanel === 'function') {
+            showProgressPanel();
+            return;
+        }
+        if (initialView === 'settings' && typeof showSettingsPanel === 'function') {
+            showSettingsPanel();
+            return;
+        }
+
+        if (typeof showTxtConverterPanel === 'function') {
+            showTxtConverterPanel();
+        }
+    }
 
     document.getElementById('ttw-start-btn').addEventListener('click', handleStartConversion);
     const directorStartBtn = document.getElementById('ttw-start-director-btn');
@@ -73,9 +121,7 @@ export function bindActionEvents(deps = {}) {
         progressBtn.addEventListener('click', showProgressPanel);
     }
 
-    if (typeof showTxtConverterPanel === 'function') {
-        showTxtConverterPanel();
-    }
+    restoreInitialView();
 }
 
 export function bindExportEvents(deps = {}) {

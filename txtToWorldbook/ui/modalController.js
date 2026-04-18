@@ -17,8 +17,68 @@ export function createModalController(deps) {
 
     let exitPersistenceBound = false;
     let exitPersistenceHandler = null;
+    const MODAL_SCROLL_STORAGE_KEY = 'westworldTxtToWorldbookModalScrollState';
+
+    function getModalScrollContainer() {
+        const container = getModalContainer();
+        if (!container) return null;
+        return container.querySelector('.ttw-modal-body');
+    }
+
+    function readSavedScrollTop() {
+        if (Number.isFinite(Number(AppState?.ui?.lastModalScrollTop))) {
+            return Math.max(0, Number(AppState.ui.lastModalScrollTop));
+        }
+
+        try {
+            const raw = localStorage.getItem(MODAL_SCROLL_STORAGE_KEY);
+            if (!raw) return 0;
+            const parsed = JSON.parse(raw);
+            const top = Number(parsed?.top);
+            return Number.isFinite(top) ? Math.max(0, top) : 0;
+        } catch (_) {
+            return 0;
+        }
+    }
+
+    function saveModalScrollPosition() {
+        const scrollContainer = getModalScrollContainer();
+        const top = Math.max(0, Number(scrollContainer?.scrollTop || 0));
+
+        if (!AppState.ui || typeof AppState.ui !== 'object') {
+            AppState.ui = {};
+        }
+        AppState.ui.lastModalScrollTop = top;
+
+        try {
+            localStorage.setItem(MODAL_SCROLL_STORAGE_KEY, JSON.stringify({
+                top,
+                at: Date.now(),
+            }));
+        } catch (_) {
+            // ignore localStorage write errors
+        }
+    }
+
+    function restoreModalScrollPosition() {
+        const savedTop = readSavedScrollTop();
+        if (!Number.isFinite(savedTop) || savedTop <= 0) return;
+
+        const apply = () => {
+            const scrollContainer = getModalScrollContainer();
+            if (!scrollContainer) return;
+            const maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+            scrollContainer.scrollTop = Math.min(savedTop, maxTop);
+        };
+
+        // 重复应用以覆盖异步内容渲染导致的滚动重置。
+        apply();
+        requestAnimationFrame(apply);
+        requestAnimationFrame(() => requestAnimationFrame(apply));
+    }
 
     function persistSnapshotOnExit() {
+        saveModalScrollPosition();
         if (typeof saveStateSnapshot !== 'function') return;
         Promise.resolve(saveStateSnapshot()).catch(onRestoreStateError);
     }
@@ -50,6 +110,8 @@ export function createModalController(deps) {
         if (AppState.memory.queue.length <= 0 && typeof checkAndRestoreState === 'function') {
             await checkAndRestoreState({ autoRestore: true }).catch(onRestoreStateError);
         }
+
+        restoreModalScrollPosition();
 
         ensureExitPersistenceBinding();
     }

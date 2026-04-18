@@ -73,6 +73,34 @@ export function createChapterExperienceView(deps = {}) {
         { value: 'conflict_closed', label: 'conflict_closed（完整冲突闭环结束）' },
     ];
     let activeEditorModal = null;
+    const LAST_MODAL_VIEW_STORAGE_KEY = 'westworldTxtToWorldbookLastModalView';
+    const SUPPORTED_VIEW_MODES = new Set(['txt', 'outline', 'current', 'progress', 'settings', 'prompt-editor']);
+
+    function normalizeViewMode(mode) {
+        const normalized = String(mode || '').trim().toLowerCase();
+        return SUPPORTED_VIEW_MODES.has(normalized) ? normalized : '';
+    }
+
+    function persistLastModalView(mode) {
+        const normalized = normalizeViewMode(mode);
+        if (!normalized) return;
+
+        if (!AppState.ui || typeof AppState.ui !== 'object') {
+            AppState.ui = {};
+        }
+        AppState.ui.lastModalView = normalized;
+
+        if (!AppState.settings || typeof AppState.settings !== 'object') {
+            AppState.settings = {};
+        }
+        AppState.settings.lastModalView = normalized;
+
+        try {
+            localStorage.setItem(LAST_MODAL_VIEW_STORAGE_KEY, normalized);
+        } catch (_) {
+            // ignore localStorage write errors
+        }
+    }
 
     function hideWithRestore(el) {
         if (!el) return;
@@ -1280,6 +1308,7 @@ export function createChapterExperienceView(deps = {}) {
     }
 
     async function showCurrentChapterPanelInternal() {
+        persistLastModalView('current');
         setModeTabActive('current');
         setTxtSectionsVisible(false);
         setResultSectionVisibleForMode('current');
@@ -1288,6 +1317,7 @@ export function createChapterExperienceView(deps = {}) {
     }
 
     function showStoryOutlinePanelInternal() {
+        persistLastModalView('outline');
         setModeTabActive('outline');
         setTxtSectionsVisible(false);
         setResultSectionVisibleForMode('outline');
@@ -1296,6 +1326,7 @@ export function createChapterExperienceView(deps = {}) {
     }
 
     function showProgressPanelInternal() {
+        persistLastModalView('progress');
         setModeTabActive('progress');
         setTxtSectionsVisible(false);
         setResultSectionVisibleForMode('progress');
@@ -1303,6 +1334,7 @@ export function createChapterExperienceView(deps = {}) {
     }
 
     function showTxtConverterPanel() {
+        persistLastModalView('txt');
         setModeTabActive('txt');
         setTxtSectionsVisible(true);
         setResultSectionVisibleForMode('txt');
@@ -1310,6 +1342,7 @@ export function createChapterExperienceView(deps = {}) {
     }
 
     function showSettingsPanelInternal() {
+        persistLastModalView('settings');
         setModeTabActive('settings');
         setTxtSectionsVisible(false);
         setResultSectionVisibleForMode('settings');
@@ -1317,6 +1350,7 @@ export function createChapterExperienceView(deps = {}) {
     }
 
     function showPromptEditorPanelInternal() {
+        persistLastModalView('prompt-editor');
         setModeTabActive('prompt-editor');
         setTxtSectionsVisible(false);
         setResultSectionVisibleForMode('settings');
