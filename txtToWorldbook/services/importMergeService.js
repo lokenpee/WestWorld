@@ -418,11 +418,12 @@ export function createImportMergeService(deps = {}) {
         });
     }
 
-    function showMergeOptionsModal(importedWorldbook, fileName, internalDuplicates = []) {
+    function showMergeOptionsModal(importedWorldbook, fileName, internalDuplicates = [], sourceLabel = '世界书') {
         if (!importedWorldbook && AppState.persistent.pendingImport) {
             importedWorldbook = AppState.persistent.pendingImport.worldbook;
             fileName = AppState.persistent.pendingImport.fileName;
             internalDuplicates = AppState.persistent.pendingImport.internalDuplicates || [];
+            sourceLabel = AppState.persistent.pendingImport.sourceLabel || sourceLabel;
         }
 
         if (!importedWorldbook) {
@@ -470,7 +471,7 @@ export function createImportMergeService(deps = {}) {
 
         const modal = ModalFactory.create({
             id: 'ttw-merge-modal',
-            title: `📥 导入世界书: ${fileName}`,
+            title: `📥 导入${sourceLabel}: ${fileName}`,
             body: bodyHtml,
             footer: footerHtml,
             maxWidth: '800px',
@@ -549,6 +550,72 @@ export function createImportMergeService(deps = {}) {
         return result;
     }
 
+    function isCharacterCardData(data) {
+        if (!data || typeof data !== 'object') return false;
+        if (String(data.spec || '').startsWith('chara_card_')) return true;
+        if (data?.data?.character_book?.entries) return true;
+        if (data?.character_book?.entries) return true;
+        return false;
+    }
+
+    function convertCharacterCardToInternal(cardData, collectDuplicates = false) {
+        const entriesSource = cardData?.data?.character_book?.entries || cardData?.character_book?.entries;
+        if (!entriesSource) {
+            return collectDuplicates ? { worldbook: {}, duplicates: [] } : {};
+        }
+
+        const entriesArray = Array.isArray(entriesSource)
+            ? entriesSource
+            : Object.values(entriesSource);
+
+        const stLikeData = {
+            entries: entriesArray.map((entry, index) => {
+                const keyArray = Array.isArray(entry?.keys)
+                    ? entry.keys
+                    : (Array.isArray(entry?.key)
+                        ? entry.key
+                        : (entry?.key ? [entry.key] : []));
+
+                return {
+                    uid: entry?.id ?? entry?.uid ?? index,
+                    key: keyArray,
+                    comment: String(entry?.comment || entry?.name || '').trim(),
+                    content: String(entry?.content || ''),
+                    group: String(entry?.extensions?.group || '').trim(),
+                };
+            }),
+        };
+
+        return convertSTFormatToInternal(stLikeData, collectDuplicates);
+    }
+
+    function resolveImportPayload(importedData) {
+        let worldbookToMerge = {};
+        let internalDuplicates = [];
+        let sourceLabel = '世界书';
+
+        if (isCharacterCardData(importedData)) {
+            const result = convertCharacterCardToInternal(importedData, true);
+            worldbookToMerge = result.worldbook;
+            internalDuplicates = result.duplicates;
+            sourceLabel = '角色卡';
+        } else if (importedData.entries) {
+            const result = convertSTFormatToInternal(importedData, true);
+            worldbookToMerge = result.worldbook;
+            internalDuplicates = result.duplicates;
+        } else if (importedData.merged) {
+            worldbookToMerge = importedData.merged;
+        } else {
+            worldbookToMerge = importedData;
+        }
+
+        return {
+            worldbookToMerge,
+            internalDuplicates,
+            sourceLabel,
+        };
+    }
+
     async function importAndMergeWorldbook() {
         const input = document.createElement('input');
         input.type = 'file';
@@ -561,18 +628,16 @@ export function createImportMergeService(deps = {}) {
             try {
                 const content = await file.text();
                 const importedData = JSON.parse(content);
+                const {
+                    worldbookToMerge,
+                    internalDuplicates,
+                    sourceLabel,
+                } = resolveImportPayload(importedData);
 
-                let worldbookToMerge = {};
-                let internalDuplicates = [];
-
-                if (importedData.entries) {
-                    const result = convertSTFormatToInternal(importedData, true);
-                    worldbookToMerge = result.worldbook;
-                    internalDuplicates = result.duplicates;
-                } else if (importedData.merged) {
-                    worldbookToMerge = importedData.merged;
-                } else {
-                    worldbookToMerge = importedData;
+                const totalEntries = Object.values(worldbookToMerge || {})
+                    .reduce((sum, cat) => sum + Object.keys(cat || {}).length, 0);
+                if (totalEntries <= 0) {
+                    throw new Error(`未从${sourceLabel}中解析到可导入的世界书条目`);
                 }
 
                 AppState.persistent.pendingImport = {
@@ -580,9 +645,10 @@ export function createImportMergeService(deps = {}) {
                     fileName: file.name,
                     timestamp: Date.now(),
                     internalDuplicates,
+                    sourceLabel,
                 };
 
-                showMergeOptionsModal(worldbookToMerge, file.name, internalDuplicates);
+                showMergeOptionsModal(worldbookToMerge, file.name, internalDuplicates, sourceLabel);
             } catch (error) {
                 Logger.error('ImportMerge', '导入失败:', error);
                 ErrorHandler.showUserError(`导入失败: ${error.message}`);
@@ -592,8 +658,54 @@ export function createImportMergeService(deps = {}) {
         input.click();
     }
 
+    async function importAndMergeCharacterCard() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const content = await file.text();
+                const importedData = JSON.parse(content);
+
+                if (!isCharacterCardData(importedData)) {
+                    throw new Error('文件不是可识别的角色卡JSON（缺少 character_book.entries）');
+                }
+
+                const result = convertCharacterCardToInternal(importedData, true);
+                const worldbookToMerge = result.worldbook;
+                const internalDuplicates = result.duplicates;
+                const totalEntries = Object.values(worldbookToMerge || {})
+                    .reduce((sum, cat) => sum + Object.keys(cat || {}).length, 0);
+
+                if (totalEntries <= 0) {
+                    throw new Error('角色卡中没有可导入的世界书条目');
+                }
+
+                AppState.persistent.pendingImport = {
+                    worldbook: worldbookToMerge,
+                    fileName: file.name,
+                    timestamp: Date.now(),
+                    internalDuplicates,
+                    sourceLabel: '角色卡',
+                };
+
+                showMergeOptionsModal(worldbookToMerge, file.name, internalDuplicates, '角色卡');
+            } catch (error) {
+                Logger.error('ImportMerge', '角色卡导入失败:', error);
+                ErrorHandler.showUserError(`角色卡导入失败: ${error.message}`);
+            }
+        };
+
+        input.click();
+    }
+
     return {
         importAndMergeWorldbook,
+        importAndMergeCharacterCard,
         showMergeOptionsModal,
     };
 }

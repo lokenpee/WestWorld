@@ -87,7 +87,7 @@ ${buildApiConfigCard('director', '🎬 导演AI配置')}
     </div>`;
 }
 
-const PLUGIN_VERSION = 'v3.9.3';
+const PLUGIN_VERSION = 'v3.9.4';
 
 function buildPluginUpdateHtml() {
     return '';
@@ -550,7 +550,8 @@ function buildFileUploadSectionHtml() {
         <div class="ttw-section-header">
             <span>📄 文件上传</span>
             <div style="display:flex;gap:8px;">
-                <button id="ttw-import-json" class="ttw-btn-small" title="导入已有世界书JSON进行合并">📥 合并世界书</button>
+                <button id="ttw-import-json" class="ttw-btn-small" title="导入已有世界书JSON并合并到当前世界书">📥 导入世界书</button>
+                <button id="ttw-import-chara" class="ttw-btn-small" title="导入已导出的角色卡JSON并提取其中的世界书条目">🃏 导入角色卡</button>
                 <button id="ttw-restore-snapshot" class="ttw-btn-small" title="从本地快照恢复上次任务（仅在你主动点击时触发）">🗂 读取任务快照</button>
                 <button id="ttw-import-task" class="ttw-btn-small" title="导入工程包并恢复章节队列、故事大纲、当前章节概览与世界书">📥 导入工程包</button>
                 <button id="ttw-export-task" class="ttw-btn-small" title="导出完整工程包，后续可一键恢复">📤 导出工程包</button>

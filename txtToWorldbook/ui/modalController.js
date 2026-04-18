@@ -61,9 +61,16 @@ export function createModalController(deps) {
         const subModals = document.querySelectorAll('.ttw-modal-container:not(#txt-to-worldbook-modal)');
         if (subModals.length <= 0) return;
 
+        const topModal = subModals[subModals.length - 1];
+        if (topModal?.dataset?.ttwAllowGlobalEscClose === 'false') {
+            e.stopPropagation();
+            e.preventDefault();
+            return;
+        }
+
         e.stopPropagation();
         e.preventDefault();
-        subModals[subModals.length - 1].remove(); // 关闭最顶层的子模态框
+        topModal.remove(); // 关闭最顶层的子模态框
         // 主模态框不响应ESC，只能通过右上角关闭按钮退出
     }
 

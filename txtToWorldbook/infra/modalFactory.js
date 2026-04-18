@@ -27,12 +27,14 @@
             maxHeight = '80vh',
             onClose = null,
             closeOnOverlay = true,
-            closeOnEscape = true
+            closeOnEscape = true,
+            allowGlobalEscClose = true
         } = config;
 
         const container = document.createElement('div');
         container.id = id || `ttw-modal-${Date.now()}`;
         container.className = 'ttw-modal-container';
+        container.dataset.ttwAllowGlobalEscClose = allowGlobalEscClose ? 'true' : 'false';
 
         const modal = document.createElement('div');
         modal.className = 'ttw-modal';

@@ -935,6 +935,12 @@ const {
         return importMergeService.importAndMergeWorldbook();
     }
 
+    // ========== 导入角色卡并提取世界书条目 ==========
+    async function importAndMergeCharacterCard() {
+        if (!importMergeService || typeof importMergeService.importAndMergeCharacterCard !== 'function') return;
+        return importMergeService.importAndMergeCharacterCard();
+    }
+
 
 
 
@@ -1275,6 +1281,7 @@ shellRuntime = createShellRuntime(createShellRuntimeConfig({
     previewRepeatedSegmentsCleanup: (...args) => previewRepeatedSegmentsCleanup(...args),
     executeRepeatedSegmentsCleanup: (...args) => executeRepeatedSegmentsCleanup(...args),
     importAndMergeWorldbook,
+    importAndMergeCharacterCard,
     loadTaskState: (...args) => loadTaskState(...args),
     saveTaskState: (...args) => saveTaskState(...args),
     exportSettings: (...args) => exportSettings(...args),

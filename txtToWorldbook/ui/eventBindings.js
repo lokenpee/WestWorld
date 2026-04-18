@@ -85,6 +85,7 @@ export function bindExportEvents(deps = {}) {
         showPlotOutlineConfigModal,
         showBatchDeleteRepeatedSegmentsModal,
         importAndMergeWorldbook,
+        importAndMergeCharacterCard,
         restoreTaskSnapshot,
         loadTaskState,
         saveTaskState,
@@ -99,6 +100,10 @@ export function bindExportEvents(deps = {}) {
     document.getElementById('ttw-preview-prompt').addEventListener('click', showPromptPreview);
     document.getElementById('ttw-plot-export-config').addEventListener('click', showPlotOutlineConfigModal);
     document.getElementById('ttw-import-json').addEventListener('click', importAndMergeWorldbook);
+    const importCharaBtn = document.getElementById('ttw-import-chara');
+    if (importCharaBtn && typeof importAndMergeCharacterCard === 'function') {
+        importCharaBtn.addEventListener('click', importAndMergeCharacterCard);
+    }
     const restoreSnapshotBtn = document.getElementById('ttw-restore-snapshot');
     if (restoreSnapshotBtn && typeof restoreTaskSnapshot === 'function') {
         restoreSnapshotBtn.addEventListener('click', restoreTaskSnapshot);

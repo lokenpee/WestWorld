@@ -705,6 +705,8 @@ export function createChapterExperienceView(deps = {}) {
             maxWidth: '94vw',
             maxHeight: '84vh',
             closeOnOverlay: false,
+            closeOnEscape: false,
+            allowGlobalEscClose: false,
             onClose: () => {
                 activeEditorModal = null;
             },
